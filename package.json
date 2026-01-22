@@ -1,0 +1,156 @@
+{
+    "name": "agy-retry",
+    "displayName": "Agy Retry",
+    "description": "Auto-retry for AI coding agents. Zero-babysitting automation.",
+    "version": "0.1.0",
+    "publisher": "paean-ai",
+    "author": "paean-ai",
+    "icon": "resources/icons/icon.png",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/paean-ai/agy-retry"
+    },
+    "bugs": {
+        "url": "https://github.com/paean-ai/agy-retry/issues"
+    },
+    "homepage": "https://github.com/paean-ai/agy-retry#readme",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "keywords": [
+        "auto retry",
+        "ai agent automation",
+        "cursor auto retry",
+        "vscode auto retry",
+        "zero babysitting",
+        "cdp automation",
+        "antigravity"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "agyRetry.start",
+                "title": "Agy Retry: Start Auto Retry",
+                "icon": "$(play)"
+            },
+            {
+                "command": "agyRetry.stop",
+                "title": "Agy Retry: Stop Auto Retry",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "agyRetry.openPanel",
+                "title": "Agy Retry: Open Panel",
+                "icon": "$(window)"
+            }
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "agy-retry",
+                    "title": "Agy Retry",
+                    "icon": "resources/icons/sidebar.svg"
+                }
+            ]
+        },
+        "views": {
+            "agy-retry": [
+                {
+                    "type": "webview",
+                    "id": "agyRetry.mainPanel",
+                    "name": "Auto Retry"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "Agy Retry",
+            "properties": {
+                "agyRetry.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable auto-retry for AI agent buttons (requires CDP setup)"
+                },
+                "agyRetry.autoStart": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically start Auto Retry when IDE launches"
+                },
+                "agyRetry.cdpPort": {
+                    "type": "number",
+                    "default": 31905,
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "description": "CDP remote debugging port for auto-retry"
+                },
+                "agyRetry.cdpPortRange": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 0,
+                    "maximum": 10,
+                    "description": "Port range to scan (port ± range)"
+                },
+                "agyRetry.intervalSeconds": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 1,
+                    "maximum": 30,
+                    "description": "Interval in seconds between retry checks"
+                },
+                "agyRetry.maxRetries": {
+                    "type": "number",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "Maximum number of auto-retries before stopping"
+                },
+                "agyRetry.cooldownSeconds": {
+                    "type": "number",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 60,
+                    "description": "Cooldown in seconds after clicking retry button"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run build",
+        "build": "webpack --mode production",
+        "build:dev": "webpack --mode development",
+        "watch": "webpack --mode development --watch",
+        "lint": "eslint src --ext ts",
+        "lint:fix": "eslint src --ext ts --fix",
+        "package": "vsce package --no-yarn",
+        "publish": "vsce publish --no-yarn"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@types/vscode": "^1.85.0",
+        "@types/vscode-webview": "^1.57.4",
+        "@types/ws": "^8.5.10",
+        "@typescript-eslint/eslint-plugin": "^6.13.0",
+        "@typescript-eslint/parser": "^6.13.0",
+        "@vscode/test-electron": "^2.3.8",
+        "@vscode/vsce": "^2.22.0",
+        "copy-webpack-plugin": "^11.0.0",
+        "css-loader": "^6.8.1",
+        "eslint": "^8.54.0",
+        "style-loader": "^3.3.3",
+        "ts-loader": "^9.5.1",
+        "typescript": "^5.3.2",
+        "webpack": "^5.89.0",
+        "webpack-cli": "^5.1.4"
+    },
+    "dependencies": {
+        "@vscode/webview-ui-toolkit": "^1.4.0",
+        "ws": "^8.14.0"
+    }
+}
