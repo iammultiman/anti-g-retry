@@ -23,6 +23,7 @@ export class AutoRetryService {
     private relauncher: Relauncher;
     private logCallback?: AutoRetryLogCallback;
     private retryCallback?: () => void;
+    private lastKnownClicks: number = 0;
     private pollTimer?: ReturnType<typeof setInterval>;
     private config: AutoRetryConfig;
 
@@ -118,20 +119,49 @@ export class AutoRetryService {
         }
 
         this.isRunning = true;
+        this.lastKnownClicks = 0;
         this.log(`✅ Auto Retry started!`, 'success');
         this.log(`Connected to ${this.cdpHandler.getConnectionCount()} page(s)`, 'info');
 
-        // Start polling to maintain connection
+        // Start polling to maintain connection and check for retry clicks
         this.pollTimer = setInterval(async () => {
             if (!this.isRunning) return;
 
+            // Reconnect/maintain CDP connections
             await this.cdpHandler.start({
                 pollInterval: this.config.intervalSeconds * 1000,
                 bannedCommands: this.getDefaultBannedCommands()
             });
-        }, 5000);
+
+            // Poll stats to detect new retry clicks
+            await this.checkForNewRetries();
+        }, 3000);
 
         return true;
+    }
+
+    /**
+     * Check for new retry clicks by polling stats
+     */
+    private async checkForNewRetries(): Promise<void> {
+        try {
+            const stats = await this.cdpHandler.getStats();
+            const currentClicks = stats.clicks;
+
+            if (currentClicks > this.lastKnownClicks) {
+                const newClicks = currentClicks - this.lastKnownClicks;
+                this.log(`🔄 Detected ${newClicks} new retry click(s)`, 'success');
+
+                // Call the retry callback for each new click
+                for (let i = 0; i < newClicks; i++) {
+                    this.retryCallback?.();
+                }
+
+                this.lastKnownClicks = currentClicks;
+            }
+        } catch (error) {
+            // Ignore errors during stats polling
+        }
     }
 
     /**
