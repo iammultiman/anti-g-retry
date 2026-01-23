@@ -11,9 +11,16 @@ interface KeyModels {
   geminiFlash: number;
 }
 
+interface ResetTimes {
+  claude: string;
+  geminiPro: string;
+  geminiFlash: string;
+}
+
 interface QuotaData {
   connected: boolean;
   keyModels?: KeyModels;
+  resetTimes?: ResetTimes;
   promptCredits?: {
     available: number;
     monthly: number;
@@ -82,6 +89,7 @@ export class MainPanel {
                 <span class="percentage" id="pct-claude">--%</span>
               </div>
               <span class="model-name">Claude</span>
+              <span class="reset-time" id="reset-claude"></span>
             </div>
             <div class="model-card" data-model="gemini-pro">
               <div class="model-ring">
@@ -92,6 +100,7 @@ export class MainPanel {
                 <span class="percentage" id="pct-pro">--%</span>
               </div>
               <span class="model-name">Gemini Pro</span>
+              <span class="reset-time" id="reset-pro"></span>
             </div>
             <div class="model-card" data-model="gemini-flash">
               <div class="model-ring">
@@ -102,6 +111,7 @@ export class MainPanel {
                 <span class="percentage" id="pct-flash">--%</span>
               </div>
               <span class="model-name">Gemini Flash</span>
+              <span class="reset-time" id="reset-flash"></span>
             </div>
           </div>
         </section>
@@ -292,19 +302,21 @@ export function updateQuotaData(data: QuotaData): void {
 
   // Update model cards
   if (data.keyModels) {
-    updateModelRing('claude', data.keyModels.claude);
-    updateModelRing('pro', data.keyModels.geminiPro);
-    updateModelRing('flash', data.keyModels.geminiFlash);
+    updateModelRing('claude', data.keyModels.claude, data.resetTimes?.claude);
+    updateModelRing('pro', data.keyModels.geminiPro, data.resetTimes?.geminiPro);
+    updateModelRing('flash', data.keyModels.geminiFlash, data.resetTimes?.geminiFlash);
   }
 }
 
-function updateModelRing(modelId: string, percentage: number): void {
+function updateModelRing(modelId: string, percentage: number, resetTime?: string): void {
   const ring = document.getElementById(`ring-${modelId}`);
   const pct = document.getElementById(`pct-${modelId}`);
+  const resetEl = document.getElementById(`reset-${modelId}`);
 
   if (percentage < 0) {
     if (ring) ring.setAttribute('stroke-dasharray', '0, 100');
     if (pct) pct.textContent = '--';
+    if (resetEl) resetEl.textContent = '';
     return;
   }
 
@@ -321,6 +333,14 @@ function updateModelRing(modelId: string, percentage: number): void {
   }
   if (pct) {
     pct.textContent = `${percentage}%`;
+  }
+  // Show reset time if available and not at 100%
+  if (resetEl) {
+    if (resetTime && percentage < 100) {
+      resetEl.textContent = `↻ ${resetTime}`;
+    } else {
+      resetEl.textContent = '';
+    }
   }
 }
 

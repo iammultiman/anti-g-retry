@@ -67,6 +67,13 @@ export interface KeyModelQuota {
     geminiFlash: number; // Gemini Flash remaining %
 }
 
+// Key models recovery time info
+export interface KeyModelResetTimes {
+    claude: string;       // Claude time until reset (e.g., "1h 30m")
+    geminiPro: string;    // Gemini Pro time until reset
+    geminiFlash: string;  // Gemini Flash time until reset
+}
+
 /**
  * Fetch quota from Language Server
  */
@@ -148,6 +155,39 @@ export function extractKeyModels(snapshot: QuotaSnapshot): KeyModelQuota {
         else if ((label.includes('gemini') && label.includes('flash')) ||
             (modelId.includes('gemini') && modelId.includes('flash'))) {
             result.geminiFlash = Math.round(model.remainingPercentage);
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Extract key model reset times from snapshot
+ */
+export function extractKeyModelResetTimes(snapshot: QuotaSnapshot): KeyModelResetTimes {
+    const result: KeyModelResetTimes = {
+        claude: '',
+        geminiPro: '',
+        geminiFlash: '',
+    };
+
+    for (const model of snapshot.models) {
+        const label = model.label.toLowerCase();
+        const modelId = model.modelId.toLowerCase();
+
+        // Claude detection
+        if (label.includes('claude') || modelId.includes('claude')) {
+            result.claude = model.timeUntilReset;
+        }
+        // Gemini Pro detection
+        else if ((label.includes('gemini') && label.includes('pro')) ||
+            (modelId.includes('gemini') && modelId.includes('pro'))) {
+            result.geminiPro = model.timeUntilReset;
+        }
+        // Gemini Flash detection
+        else if ((label.includes('gemini') && label.includes('flash')) ||
+            (modelId.includes('gemini') && modelId.includes('flash'))) {
+            result.geminiFlash = model.timeUntilReset;
         }
     }
 

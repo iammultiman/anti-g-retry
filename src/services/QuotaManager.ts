@@ -7,13 +7,14 @@
 
 import * as vscode from 'vscode';
 import { detectAntigravityServer, ServerInfo, DetectionResult } from './server-detector';
-import { fetchQuota, extractKeyModels, QuotaSnapshot, KeyModelQuota } from './quota-service';
+import { fetchQuota, extractKeyModels, extractKeyModelResetTimes, QuotaSnapshot, KeyModelQuota, KeyModelResetTimes } from './quota-service';
 
 export interface QuotaState {
     connected: boolean;
     server?: ServerInfo;
     snapshot?: QuotaSnapshot;
     keyModels?: KeyModelQuota;
+    resetTimes?: KeyModelResetTimes;
     lastUpdate?: Date;
     error?: string;
 }
@@ -151,10 +152,12 @@ export class QuotaManager {
 
         if (result.success && result.snapshot) {
             const keyModels = extractKeyModels(result.snapshot);
+            const resetTimes = extractKeyModelResetTimes(result.snapshot);
             this.state = {
                 ...this.state,
                 snapshot: result.snapshot,
                 keyModels,
+                resetTimes,
                 lastUpdate: new Date(),
                 error: undefined,
             };

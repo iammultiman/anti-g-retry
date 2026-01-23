@@ -82,6 +82,12 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             this.sendAutoRetryLog(msg, type === 'warning' ? 'info' : type);
         });
 
+        // Set up retry count callback (same as handleStartAutoRetry)
+        this._autoRetryService.setRetryCallback(() => {
+            this._quotaManager.incrementRetryCount();
+            this.sendRetryStats();
+        });
+
         const cdpAvailable = await this._autoRetryService.isCDPAvailable();
 
         if (!cdpAvailable) {
@@ -94,7 +100,9 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
         const started = await this._autoRetryService.start();
 
         if (started) {
+            this._quotaManager.resetSessionRetries();
             this.sendAutoRetryStatus();
+            this.sendRetryStats();
             this.sendAutoRetryLog('✅ Auto Retry auto-started!', 'success');
         } else {
             this.sendAutoRetryLog('Auto-start failed', 'error');
@@ -181,6 +189,7 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             data: {
                 connected: state.connected,
                 keyModels: state.keyModels,
+                resetTimes: state.resetTimes,
                 promptCredits: state.snapshot?.promptCredits,
                 userInfo: state.snapshot?.userInfo,
                 lastUpdate: state.lastUpdate?.toISOString(),

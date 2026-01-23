@@ -64,8 +64,15 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .header-text h2 {
@@ -226,6 +233,15 @@ body {
   white-space: nowrap;
 }
 
+.reset-time {
+  font-size: 8px;
+  opacity: 0.5;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--color-warning);
+  min-height: 12px;
+}
+
 /* Stats Section */
 .stats-section {
   padding: 4px 0;
@@ -359,8 +375,15 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .log-line.log-success {
@@ -421,19 +444,19 @@ vscode-button:hover {
   .model-cards {
     flex-direction: column;
   }
-  
+
   .model-card {
     flex-direction: row;
     justify-content: flex-start;
     gap: 12px;
     padding: 8px 12px;
   }
-  
+
   .model-ring {
     width: 36px;
     height: 36px;
   }
-  
+
   .percentage {
     font-size: 9px;
   }

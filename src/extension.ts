@@ -42,7 +42,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
 
         vscode.commands.registerCommand('agyRetry.openPanel', () => {
-            vscode.commands.executeCommand('agy-retry.focus');
+            vscode.commands.executeCommand('agyRetry.mainPanel.focus');
         }),
 
         vscode.commands.registerCommand('agyRetry.refreshQuota', async () => {

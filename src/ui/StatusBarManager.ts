@@ -68,11 +68,21 @@ export class StatusBarManager {
             this.statusBarItem.backgroundColor = undefined;
         }
 
-        // Detailed tooltip
+        // Detailed tooltip with reset times
         const tooltipLines = ['Antigravity Model Usage'];
-        if (models.claude >= 0) tooltipLines.push(`Claude: ${models.claude}% remaining`);
-        if (models.geminiPro >= 0) tooltipLines.push(`Gemini Pro: ${models.geminiPro}% remaining`);
-        if (models.geminiFlash >= 0) tooltipLines.push(`Gemini Flash: ${models.geminiFlash}% remaining`);
+        const resetTimes = state.resetTimes;
+        if (models.claude >= 0) {
+            const resetInfo = resetTimes?.claude ? ` (reset: ${resetTimes.claude})` : '';
+            tooltipLines.push(`Claude: ${models.claude}% remaining${resetInfo}`);
+        }
+        if (models.geminiPro >= 0) {
+            const resetInfo = resetTimes?.geminiPro ? ` (reset: ${resetTimes.geminiPro})` : '';
+            tooltipLines.push(`Gemini Pro: ${models.geminiPro}% remaining${resetInfo}`);
+        }
+        if (models.geminiFlash >= 0) {
+            const resetInfo = resetTimes?.geminiFlash ? ` (reset: ${resetTimes.geminiFlash})` : '';
+            tooltipLines.push(`Gemini Flash: ${models.geminiFlash}% remaining${resetInfo}`);
+        }
         if (state.lastUpdate) {
             tooltipLines.push(`Last updated: ${state.lastUpdate.toLocaleTimeString()}`);
         }

@@ -71,6 +71,11 @@ interface QuotaUpdateMessage {
             geminiPro: number;
             geminiFlash: number;
         };
+        resetTimes?: {
+            claude: string;
+            geminiPro: string;
+            geminiFlash: string;
+        };
         promptCredits?: {
             available: number;
             monthly: number;

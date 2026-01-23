@@ -11,3 +11,4 @@ webpack.config.js
 tsconfig.json
 webview/tsconfig.json
 .eslintrc*
+.env
