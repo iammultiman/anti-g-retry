@@ -2,7 +2,7 @@
     "name": "agy-retry",
     "displayName": "Agy Retry",
     "description": "Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting automation with usage statistics.",
-    "version": "0.2.1",
+    "version": "0.3.2",
     "publisher": "paean-ai",
     "author": "paean-ai",
     "icon": "resources/icons/icon.png",

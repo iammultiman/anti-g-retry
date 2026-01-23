@@ -70,6 +70,21 @@ export class MainPanel {
           </div>
         </div>
 
+        <!-- CDP Disconnected Notice -->
+        <section class="cdp-notice" id="cdp-notice" style="display: none;">
+          <div class="notice-content">
+            <span class="codicon codicon-info notice-icon"></span>
+            <div class="notice-text">
+              <p class="notice-title">🚀 No CDP? Try <code>ragy</code>!</p>
+              <p class="notice-desc">Run <code>ragy</code> in terminal to launch Agy with CDP enabled.</p>
+              <p class="notice-hint">If it works, retry lives on. If not, maybe Google fixed it. Happy vibe coding! ✨</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- CDP-dependent content wrapper -->
+        <div id="cdp-content">
+
         <!-- Usage Stats Section -->
         <section class="usage-section" id="usage-section">
           <div class="section-header">
@@ -167,16 +182,83 @@ export class MainPanel {
 
         <vscode-divider></vscode-divider>
 
-        <!-- Log Section -->
-        <section class="log-section">
-          <div class="section-header">
+        <!-- Log Section (Collapsible) -->
+        <section class="log-section collapsible collapsed" id="log-section">
+          <div class="section-header collapsible-header" id="log-header">
             <span class="codicon codicon-terminal"></span>
-            <span class="section-title">Log</span>
+            <span class="section-title">Retry Log</span>
+            <span class="codicon codicon-chevron-right collapse-icon"></span>
           </div>
-          <div id="auto-retry-log" class="log-output">
-            <div class="log-empty">Click Start to enable auto-retry</div>
+          <div id="auto-retry-log" class="log-output collapsible-content">
+            <div class="log-empty">Click Start to enable</div>
           </div>
         </section>
+
+        <vscode-divider></vscode-divider>
+
+        <!-- Batch Automation Section -->
+        <section class="batch-section">
+          <div class="section-header">
+            <span class="codicon codicon-layers"></span>
+            <span class="section-title">Batch Automation</span>
+          </div>
+          
+          <!-- Batch Configuration -->
+          <div class="batch-config">
+            <label class="input-label">Prompt Template</label>
+            <textarea id="batch-prompt" class="batch-textarea" rows="4" placeholder="Enter your prompt here..."></textarea>
+            
+            <label class="input-label">Repeat Count (1-100)</label>
+            <input type="number" id="batch-repeat-count" class="batch-input" min="1" max="100" value="5" />
+          </div>
+
+          <!-- Batch Status -->
+          <div class="batch-status" id="batch-status-row">
+            <span class="status-label">Status:</span>
+            <span id="batch-status" class="status-badge status-off">Idle</span>
+          </div>
+          
+          <!-- Batch Progress -->
+          <div class="batch-progress" id="batch-progress-row">
+            <div class="progress-label">
+              <span>Progress:</span>
+              <span id="batch-progress-text">0 / 0</span>
+            </div>
+            <div class="progress-bar">
+              <div id="batch-progress-fill" class="progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Batch Controls -->
+          <div class="batch-controls">
+            <vscode-button id="btn-start-batch" appearance="primary" class="batch-btn">
+              <span class="codicon codicon-play"></span>
+              <span>Start</span>
+            </vscode-button>
+            <vscode-button id="btn-pause-batch" appearance="secondary" class="batch-btn" disabled>
+              <span class="codicon codicon-debug-pause"></span>
+            </vscode-button>
+            <vscode-button id="btn-stop-batch" appearance="secondary" class="batch-btn" disabled>
+              <span class="codicon codicon-debug-stop"></span>
+            </vscode-button>
+          </div>
+
+          <!-- Batch Log (Collapsible) -->
+          <section class="collapsible collapsed" id="batch-log-section">
+            <div class="collapsible-header" id="batch-log-header">
+              <span class="codicon codicon-output"></span>
+              <span>Batch Log</span>
+              <button class="copy-logs-btn" id="btn-copy-batch-logs" title="Copy all logs">
+                <span class="codicon codicon-copy"></span>
+              </button>
+              <span class="codicon codicon-chevron-right collapse-icon"></span>
+            </div>
+            <div id="batch-log" class="batch-log-output collapsible-content">
+              <div class="log-empty">Will show batch logs here</div>
+            </div>
+          </section>
+        </section>
+        </div><!-- End CDP-dependent content wrapper -->
       </div>
     `;
 
@@ -209,6 +291,57 @@ export class MainPanel {
     // Refresh quota button
     document.getElementById('btn-refresh-quota')?.addEventListener('click', () => {
       vscode.postMessage({ type: 'refreshQuota' });
+    });
+
+    // Batch Start button
+    document.getElementById('btn-start-batch')?.addEventListener('click', () => {
+      const promptEl = document.getElementById('batch-prompt') as HTMLTextAreaElement;
+      const countEl = document.getElementById('batch-repeat-count') as HTMLInputElement;
+
+      const prompt = promptEl?.value?.trim();
+      const repeatCount = parseInt(countEl?.value || '0', 10);
+
+      if (!prompt) {
+        appendBatchLog('Please enter a prompt', 'error');
+        return;
+      }
+      if (repeatCount < 1 || repeatCount > 100) {
+        appendBatchLog('Repeat count must be between 1 and 100', 'error');
+        return;
+      }
+
+      vscode.postMessage({
+        type: 'startBatch',
+        data: { prompt, repeatCount }
+      });
+    });
+
+    // Batch Pause button
+    document.getElementById('btn-pause-batch')?.addEventListener('click', () => {
+      vscode.postMessage({ type: 'pauseBatch' });
+    });
+
+    // Batch Stop button
+    document.getElementById('btn-stop-batch')?.addEventListener('click', () => {
+      vscode.postMessage({ type: 'stopBatch' });
+    });
+
+    // Collapsible sections toggle
+    document.querySelectorAll('.collapsible-header').forEach(header => {
+      header.addEventListener('click', (e) => {
+        // Ignore clicks on copy button
+        if ((e.target as HTMLElement).closest('.copy-logs-btn')) return;
+        const section = header.closest('.collapsible');
+        if (section) {
+          section.classList.toggle('collapsed');
+        }
+      });
+    });
+
+    // Copy batch logs button
+    document.getElementById('btn-copy-batch-logs')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyAllBatchLogs();
     });
   }
 }
@@ -352,4 +485,123 @@ export function updateRetryStats(data: RetryStatsData): void {
 
   if (sessionEl) sessionEl.textContent = String(data.sessionRetries);
   if (totalEl) totalEl.textContent = String(data.totalRetries);
+}
+
+// Batch automation state update functions
+export function updateBatchStatus(status: string): void {
+  const statusBadge = document.getElementById('batch-status');
+  const startBtn = document.getElementById('btn-start-batch') as HTMLButtonElement;
+  const pauseBtn = document.getElementById('btn-pause-batch') as HTMLButtonElement;
+  const stopBtn = document.getElementById('btn-stop-batch') as HTMLButtonElement;
+
+  if (statusBadge) {
+    statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    statusBadge.className = 'status-badge';
+
+    if (status === 'running') {
+      statusBadge.classList.add('status-on');
+    } else if (status === 'completed') {
+      statusBadge.classList.add('status-success');
+    } else if (status === 'error') {
+      statusBadge.classList.add('status-error');
+    } else if (status === 'paused') {
+      statusBadge.classList.add('status-warning');
+    } else {
+      statusBadge.classList.add('status-off');
+    }
+  }
+
+  // Update button states
+  if (startBtn && pauseBtn && stopBtn) {
+    if (status === 'running') {
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled = false;
+    } else if (status === 'paused') {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Resume';
+      pauseBtn.disabled = true;
+      stopBtn.disabled = false;
+    } else {
+      startBtn.disabled = false;
+      startBtn.innerHTML = '<span class="codicon codicon-play"></span><span>Start Batch</span>';
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+    }
+  }
+}
+
+export function updateBatchProgress(current: number, total: number): void {
+  const progressText = document.getElementById('batch-progress-text');
+  const progressFill = document.getElementById('batch-progress-fill');
+
+  if (progressText) {
+    progressText.textContent = `${current} / ${total}`;
+  }
+
+  if (progressFill) {
+    const percentage = total > 0 ? (current / total) * 100 : 0;
+    progressFill.style.width = `${percentage}%`;
+  }
+}
+
+function copyAllBatchLogs(): void {
+  const logOutput = document.getElementById('batch-log');
+  if (!logOutput) return;
+
+  const lines = logOutput.querySelectorAll('.log-line');
+  if (lines.length === 0) {
+    return;
+  }
+
+  const text = Array.from(lines).map(line => line.textContent || '').join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    // Show brief feedback
+    const btn = document.getElementById('btn-copy-batch-logs');
+    if (btn) {
+      btn.title = 'Copied!';
+      setTimeout(() => { btn.title = 'Copy all logs'; }, 1500);
+    }
+  });
+}
+
+export function appendBatchLog(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
+  const logOutput = document.getElementById('batch-log');
+  if (!logOutput) return;
+
+  // Remove empty message
+  const empty = logOutput.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  // Create new log line
+  const line = document.createElement('div');
+  line.className = `log-line log-${type}`;
+  line.textContent = message;
+
+  // Add to bottom
+  logOutput.appendChild(line);
+
+  // Auto-scroll to bottom
+  logOutput.scrollTop = logOutput.scrollHeight;
+
+  // Keep only last 30 lines
+  while (logOutput.children.length > 30) {
+    logOutput.firstChild?.remove();
+  }
+}
+
+// CDP status update function
+export function updateCDPStatus(connected: boolean): void {
+  const notice = document.getElementById('cdp-notice');
+  const cdpContent = document.getElementById('cdp-content');
+
+  if (notice && cdpContent) {
+    if (connected) {
+      notice.style.display = 'none';
+      cdpContent.style.display = 'block';
+    } else {
+      notice.style.display = 'block';
+      cdpContent.style.display = 'none';
+    }
+  }
 }

@@ -22,7 +22,11 @@ import {
     appendAutoRetryLog,
     updateAutoStartCheckbox,
     updateQuotaData,
-    updateRetryStats
+    updateRetryStats,
+    updateBatchStatus,
+    updateBatchProgress,
+    appendBatchLog,
+    updateCDPStatus
 } from './panels/MainPanel';
 
 // Declare vscode API type
@@ -100,12 +104,36 @@ interface RetryStatsMessage {
     };
 }
 
+interface BatchStatusMessage {
+    type: 'batchStatus';
+    data: { status: string };
+}
+
+interface BatchProgressMessage {
+    type: 'batchProgress';
+    data: { current: number; total: number };
+}
+
+interface BatchLogMessage {
+    type: 'batchLog';
+    data: { message: string; logType: 'success' | 'error' | 'info' | 'warning' };
+}
+
+interface CDPStatusMessage {
+    type: 'cdpStatus';
+    data: { connected: boolean };
+}
+
 type ExtensionMessage =
     | AutoRetryStatusMessage
     | AutoRetryLogMessage
     | AutoStartSettingMessage
     | QuotaUpdateMessage
-    | RetryStatsMessage;
+    | RetryStatsMessage
+    | BatchStatusMessage
+    | BatchProgressMessage
+    | BatchLogMessage
+    | CDPStatusMessage;
 
 window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
     const message = event.data;
@@ -125,6 +153,18 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
             break;
         case 'retryStats':
             updateRetryStats(message.data);
+            break;
+        case 'batchStatus':
+            updateBatchStatus(message.data.status);
+            break;
+        case 'batchProgress':
+            updateBatchProgress(message.data.current, message.data.total);
+            break;
+        case 'batchLog':
+            appendBatchLog(message.data.message, message.data.logType);
+            break;
+        case 'cdpStatus':
+            updateCDPStatus(message.data.connected);
             break;
     }
 });

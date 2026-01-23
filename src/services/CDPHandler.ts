@@ -280,8 +280,9 @@ export class CDPHandler {
 
     /**
      * Evaluate JavaScript in the page context
+     * Made public for BatchPromptService integration
      */
-    private async evaluate(id: string, expression: string): Promise<any> {
+    public async evaluate(id: string, expression: string): Promise<any> {
         const conn = this.connections.get(id);
         if (!conn || conn.ws.readyState !== WebSocket.OPEN) return;
 
@@ -370,6 +371,14 @@ export class CDPHandler {
      */
     isRunning(): boolean {
         return this.isEnabled && this.connections.size > 0;
+    }
+
+    /**
+     * Get first available connection ID (for batch automation)
+     */
+    getFirstConnectionId(): string | null {
+        const firstKey = this.connections.keys().next();
+        return firstKey.done ? null : firstKey.value;
     }
 
     /**

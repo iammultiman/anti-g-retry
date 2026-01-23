@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import { AutoRetryService } from '../services/AutoRetryService';
 import { QuotaManager, QuotaState } from '../services/QuotaManager';
+import { BatchPromptService, BatchStatus } from '../services/BatchPromptService';
 
 export class SidePanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'agyRetry.mainPanel';
@@ -14,6 +15,7 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
     private readonly _autoRetryService: AutoRetryService;
     private readonly _quotaManager: QuotaManager;
     private _quotaDisposable?: vscode.Disposable;
+    private _batchPromptService?: BatchPromptService;
 
     constructor(extensionUri: vscode.Uri, quotaManager: QuotaManager) {
         this._extensionUri = extensionUri;
@@ -55,9 +57,19 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                     this.sendAutoStartSetting();
                     this.sendQuotaUpdate(this._quotaManager.getState());
                     this.sendRetryStats();
+                    this.checkAndSendCDPStatus();
                     break;
                 case 'refreshQuota':
                     await this._quotaManager.refresh();
+                    break;
+                case 'startBatch':
+                    await this.handleStartBatch(message.data?.prompt, message.data?.repeatCount);
+                    break;
+                case 'pauseBatch':
+                    this.handlePauseBatch();
+                    break;
+                case 'stopBatch':
+                    this.handleStopBatch();
                     break;
             }
         });
@@ -240,6 +252,106 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
             type: 'autoStartSetting',
             data: { enabled }
+        });
+    }
+
+    /**
+     * Check CDP availability and send status to webview
+     */
+    private async checkAndSendCDPStatus(): Promise<void> {
+        if (!this._view) return;
+        const cdpAvailable = await this._autoRetryService.isCDPAvailable();
+        this._view.webview.postMessage({
+            type: 'cdpStatus',
+            data: { connected: cdpAvailable }
+        });
+    }
+
+    /**
+     * Handle start batch automation
+     */
+    private async handleStartBatch(prompt: string, repeatCount: number): Promise<void> {
+        if (!prompt || repeatCount < 1) {
+            this.sendBatchLog('Invalid batch parameters', 'error');
+            return;
+        }
+
+        // Initialize batch service if needed
+        if (!this._batchPromptService) {
+            this._batchPromptService = new BatchPromptService(this._autoRetryService['cdpHandler']);
+
+            // Set up callbacks
+            this._batchPromptService.setLogCallback((msg, type) => {
+                this.sendBatchLog(msg, type);
+            });
+
+            this._batchPromptService.setProgressCallback((current, total) => {
+                this.sendBatchProgress(current, total);
+            });
+
+            this._batchPromptService.setStatusCallback((status) => {
+                this.sendBatchStatus(status);
+            });
+        }
+
+        this.sendBatchLog(`Starting batch: ${repeatCount} runs`, 'info');
+        const started = await this._batchPromptService.startBatch(prompt, repeatCount);
+
+        if (started) {
+            this.sendBatchStatus('running');
+        } else {
+            this.sendBatchStatus('error');
+        }
+    }
+
+    /**
+     * Handle pause batch
+     */
+    private handlePauseBatch(): void {
+        if (this._batchPromptService) {
+            this._batchPromptService.pauseBatch();
+        }
+    }
+
+    /**
+     * Handle stop batch
+     */
+    private handleStopBatch(): void {
+        if (this._batchPromptService) {
+            this._batchPromptService.stopBatch();
+        }
+    }
+
+    /**
+     * Send batch status to webview
+     */
+    private sendBatchStatus(status: BatchStatus): void {
+        if (!this._view) return;
+        this._view.webview.postMessage({
+            type: 'batchStatus',
+            data: { status }
+        });
+    }
+
+    /**
+     * Send batch progress to webview
+     */
+    private sendBatchProgress(current: number, total: number): void {
+        if (!this._view) return;
+        this._view.webview.postMessage({
+            type: 'batchProgress',
+            data: { current, total }
+        });
+    }
+
+    /**
+     * Send batch log to webview
+     */
+    private sendBatchLog(message: string, logType: 'success' | 'error' | 'info' | 'warning'): void {
+        if (!this._view) return;
+        this._view.webview.postMessage({
+            type: 'batchLog',
+            data: { message, logType }
         });
     }
 
