@@ -15,6 +15,19 @@ Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting
 - 🔌 **CDP-based** - Cursor, VS Code, Antigravity, Windsurf support
 - 🛡️ **Safety first** - blocks dangerous commands
 - 💻 **Cross-platform** - macOS, Windows, Linux
+- 💡 **Smart offline mode** - Friendly guidance when CDP unavailable
+
+## CDP Status
+
+When Antigravity runs without CDP support, the extension shows a helpful message:
+
+> 🚀 **No CDP? Try `ragy`!**
+> Run `ragy` in terminal to launch Agy with CDP enabled.
+> If it works, retry lives on. If not, maybe Google fixed it. Happy vibe coding! ✨
+
+This may indicate:
+- Antigravity was not launched with CDP flags → use `ragy` command
+- Google has officially fixed the retry issue → the plugin's retry mission is complete! 🎉
 
 ## Quick Start
 
