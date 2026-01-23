@@ -1,5 +1,6 @@
 /**
  * Webview Entry Point - Agy Retry
+ * With Antigravity usage statistics integration
  */
 import {
     provideVSCodeDesignSystem,
@@ -15,7 +16,14 @@ provideVSCodeDesignSystem().register(
     vsCodeDivider()
 );
 
-import { MainPanel, updateAutoRetryStatus, appendAutoRetryLog, updateAutoStartCheckbox } from './panels/MainPanel';
+import {
+    MainPanel,
+    updateAutoRetryStatus,
+    appendAutoRetryLog,
+    updateAutoStartCheckbox,
+    updateQuotaData,
+    updateRetryStats
+} from './panels/MainPanel';
 
 // Declare vscode API type
 interface VsCodeApi {
@@ -54,7 +62,45 @@ interface AutoStartSettingMessage {
     data: { enabled: boolean };
 }
 
-type ExtensionMessage = AutoRetryStatusMessage | AutoRetryLogMessage | AutoStartSettingMessage;
+interface QuotaUpdateMessage {
+    type: 'quotaUpdate';
+    data: {
+        connected: boolean;
+        keyModels?: {
+            claude: number;
+            geminiPro: number;
+            geminiFlash: number;
+        };
+        promptCredits?: {
+            available: number;
+            monthly: number;
+            remainingPercentage: number;
+        };
+        userInfo?: {
+            name?: string;
+            tier?: string;
+            planName?: string;
+        };
+        lastUpdate?: string;
+        error?: string;
+    };
+}
+
+interface RetryStatsMessage {
+    type: 'retryStats';
+    data: {
+        totalRetries: number;
+        sessionRetries: number;
+        lastRetryTime: string | null;
+    };
+}
+
+type ExtensionMessage =
+    | AutoRetryStatusMessage
+    | AutoRetryLogMessage
+    | AutoStartSettingMessage
+    | QuotaUpdateMessage
+    | RetryStatsMessage;
 
 window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
     const message = event.data;
@@ -68,6 +114,12 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
             break;
         case 'autoStartSetting':
             updateAutoStartCheckbox(message.data.enabled);
+            break;
+        case 'quotaUpdate':
+            updateQuotaData(message.data);
+            break;
+        case 'retryStats':
+            updateRetryStats(message.data);
             break;
     }
 });

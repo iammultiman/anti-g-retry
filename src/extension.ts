@@ -1,17 +1,29 @@
 /**
  * Agy Retry - VS Code Extension
  * Auto-retry for AI coding agents. Zero-babysitting automation.
+ * With Antigravity usage statistics integration.
  */
 import * as vscode from 'vscode';
 import { SidePanelProvider } from './ui/SidePanelProvider';
+import { StatusBarManager } from './ui/StatusBarManager';
+import { QuotaManager } from './services/QuotaManager';
 
 let sidePanelProvider: SidePanelProvider | undefined;
+let statusBarManager: StatusBarManager | undefined;
+let quotaManager: QuotaManager | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     console.log('Agy Retry is activating...');
 
-    // Register side panel
-    sidePanelProvider = new SidePanelProvider(context.extensionUri);
+    // Initialize QuotaManager singleton
+    quotaManager = QuotaManager.getInstance();
+
+    // Initialize StatusBarManager (shows model usage in status bar)
+    statusBarManager = new StatusBarManager(quotaManager);
+    context.subscriptions.push(statusBarManager);
+
+    // Register side panel with QuotaManager
+    sidePanelProvider = new SidePanelProvider(context.extensionUri, quotaManager);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             SidePanelProvider.viewType,
@@ -31,8 +43,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         vscode.commands.registerCommand('agyRetry.openPanel', () => {
             vscode.commands.executeCommand('agy-retry.focus');
+        }),
+
+        vscode.commands.registerCommand('agyRetry.refreshQuota', async () => {
+            await quotaManager?.refresh();
         })
     );
+
+    // Start quota monitoring
+    await quotaManager.start();
 
     // Auto-start Auto Retry if enabled
     const config = vscode.workspace.getConfiguration('agyRetry');
@@ -52,5 +71,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
+    quotaManager?.stop();
     console.log('Agy Retry deactivated');
 }

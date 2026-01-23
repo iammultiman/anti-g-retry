@@ -22,6 +22,7 @@ export class AutoRetryService {
     private cdpHandler: CDPHandler;
     private relauncher: Relauncher;
     private logCallback?: AutoRetryLogCallback;
+    private retryCallback?: () => void;
     private pollTimer?: ReturnType<typeof setInterval>;
     private config: AutoRetryConfig;
 
@@ -51,6 +52,14 @@ export class AutoRetryService {
         this.logCallback = callback;
         this.cdpHandler.setLogCallback(callback as CDPLogCallback);
         this.relauncher.setLogCallback(callback);
+    }
+
+    /**
+     * Set retry callback (called when a retry button is clicked)
+     */
+    public setRetryCallback(callback: () => void): void {
+        this.retryCallback = callback;
+        this.cdpHandler.setRetryCallback(callback);
     }
 
     /**

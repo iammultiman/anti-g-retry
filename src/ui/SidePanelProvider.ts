@@ -1,8 +1,10 @@
 /**
  * SidePanelProvider - WebviewViewProvider for the side panel
+ * With Antigravity usage statistics integration
  */
 import * as vscode from 'vscode';
 import { AutoRetryService } from '../services/AutoRetryService';
+import { QuotaManager, QuotaState } from '../services/QuotaManager';
 
 export class SidePanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'agyRetry.mainPanel';
@@ -10,10 +12,13 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private readonly _extensionUri: vscode.Uri;
     private readonly _autoRetryService: AutoRetryService;
+    private readonly _quotaManager: QuotaManager;
+    private _quotaDisposable?: vscode.Disposable;
 
-    constructor(extensionUri: vscode.Uri) {
+    constructor(extensionUri: vscode.Uri, quotaManager: QuotaManager) {
         this._extensionUri = extensionUri;
         this._autoRetryService = new AutoRetryService();
+        this._quotaManager = quotaManager;
     }
 
     public resolveWebviewView(
@@ -48,22 +53,35 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                 case 'getAutoRetryStatus':
                     this.sendAutoRetryStatus();
                     this.sendAutoStartSetting();
+                    this.sendQuotaUpdate(this._quotaManager.getState());
+                    this.sendRetryStats();
+                    break;
+                case 'refreshQuota':
+                    await this._quotaManager.refresh();
                     break;
             }
+        });
+
+        // Subscribe to quota updates
+        this._quotaDisposable = this._quotaManager.onUpdate((state) => {
+            this.sendQuotaUpdate(state);
+            this.sendRetryStats();
+        });
+
+        // Cleanup on dispose
+        webviewView.onDidDispose(() => {
+            this._quotaDisposable?.dispose();
         });
     }
 
     /**
      * Try to auto-start Auto Retry (called from extension activation)
-     * Only starts if CDP is available, otherwise logs error silently
      */
     public async tryAutoStartRetry(): Promise<void> {
-        // Set up log callback
         this._autoRetryService.setLogCallback((msg, type) => {
             this.sendAutoRetryLog(msg, type === 'warning' ? 'info' : type);
         });
 
-        // Check CDP status
         const cdpAvailable = await this._autoRetryService.isCDPAvailable();
 
         if (!cdpAvailable) {
@@ -72,7 +90,6 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        // CDP available - start
         this.sendAutoRetryLog('Auto-starting Auto Retry...', 'info');
         const started = await this._autoRetryService.start();
 
@@ -87,26 +104,27 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
 
     /**
      * Handle start auto-retry from webview
-     * Single button flow: check CDP -> if OK, start; if not, auto-setup
      */
     public async handleStartAutoRetry(): Promise<void> {
         this.sendAutoRetryLog('Checking CDP...', 'info');
 
-        // Set up log callback
         this._autoRetryService.setLogCallback((msg, type) => {
             this.sendAutoRetryLog(msg, type === 'warning' ? 'info' : type);
         });
 
-        // Check CDP status first
+        // Set up retry count callback
+        this._autoRetryService.setRetryCallback(() => {
+            this._quotaManager.incrementRetryCount();
+            this.sendRetryStats();
+        });
+
         const cdpAvailable = await this._autoRetryService.isCDPAvailable();
 
         if (!cdpAvailable) {
-            // CDP not available - auto setup
             this.sendAutoRetryLog('CDP not enabled. Setting up...', 'info');
             const setupSuccess = await this._autoRetryService.setupCDP();
 
             if (setupSuccess) {
-                // Setup done, user needs to restart - dialog already shown by Relauncher
                 this.sendAutoRetryLog('Please restart IDE to enable Auto Retry', 'info');
             } else {
                 this.sendAutoRetryLog('Setup failed. Check instructions above.', 'error');
@@ -115,12 +133,13 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        // CDP available - start immediately
         this.sendAutoRetryLog('CDP available! Starting...', 'success');
         const started = await this._autoRetryService.start();
 
         if (started) {
+            this._quotaManager.resetSessionRetries();
             this.sendAutoRetryStatus();
+            this.sendRetryStats();
             vscode.window.showInformationMessage('Auto Retry started - auto-clicking Retry buttons');
         } else {
             this.sendAutoRetryStatus();
@@ -149,6 +168,36 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                 retryCount: status.retryCount,
                 connectionCount: status.connectionCount
             }
+        });
+    }
+
+    /**
+     * Send quota update to webview
+     */
+    private sendQuotaUpdate(state: QuotaState): void {
+        if (!this._view) return;
+        this._view.webview.postMessage({
+            type: 'quotaUpdate',
+            data: {
+                connected: state.connected,
+                keyModels: state.keyModels,
+                promptCredits: state.snapshot?.promptCredits,
+                userInfo: state.snapshot?.userInfo,
+                lastUpdate: state.lastUpdate?.toISOString(),
+                error: state.error
+            }
+        });
+    }
+
+    /**
+     * Send retry stats to webview
+     */
+    private sendRetryStats(): void {
+        if (!this._view) return;
+        const stats = this._quotaManager.getRetryStats();
+        this._view.webview.postMessage({
+            type: 'retryStats',
+            data: stats
         });
     }
 

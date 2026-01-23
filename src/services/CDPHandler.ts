@@ -37,8 +37,10 @@ export class CDPHandler {
     private isEnabled: boolean = false;
     private msgId: number = 1;
     private logCallback?: CDPLogCallback;
+    private retryCallback?: () => void;
     private basePort: number;
     private portRange: number;
+    private lastClickCount: number = 0;
 
     constructor() {
         const config = vscode.workspace.getConfiguration('agyRetry');
@@ -67,6 +69,13 @@ export class CDPHandler {
      */
     setLogCallback(callback: CDPLogCallback): void {
         this.logCallback = callback;
+    }
+
+    /**
+     * Set retry callback (called when retry count increases)
+     */
+    setRetryCallback(callback: () => void): void {
+        this.retryCallback = callback;
     }
 
     /**
