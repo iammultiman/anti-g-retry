@@ -91,7 +91,7 @@ export class Relauncher {
      * macOS: Show dialog with Terminal and Finder options
      */
     private async showMacOSDialog(ideName: string): Promise<void> {
-        const command = `~/.local/bin/${ideName.toLowerCase()}-cdp`;
+        const command = 'ragy';
 
         const choice = await vscode.window.showWarningMessage(
             `✅ CDP Setup Complete!\n\n` +
@@ -197,7 +197,7 @@ export class Relauncher {
         const port = this.cdpPort;
 
         if (this.platform === 'darwin') {
-            return `~/.local/bin/${ideName.toLowerCase()}-cdp`;
+            return 'ragy';
         } else if (this.platform === 'win32') {
             const exe = this.findExecutable();
             // Use 'start' to run in background (no need to keep CMD open)
@@ -303,7 +303,7 @@ export class Relauncher {
 
             if (!appPath) return false;
 
-            const wrapperPath = path.join(binDir, `${ideName.toLowerCase()}-cdp`);
+            const wrapperPath = path.join(binDir, 'ragy');
             const content = `#!/bin/bash\nopen -a "${appPath}" --args --remote-debugging-port=${this.cdpPort} "$@"`;
             fs.writeFileSync(wrapperPath, content, { mode: 0o755 });
 
