@@ -71,6 +71,12 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                 case 'stopBatch':
                     this.handleStopBatch();
                     break;
+                case 'copyDOMInfo':
+                    await this.handleCopyDOMInfo();
+                    break;
+                case 'copyLastError':
+                    await this.handleCopyLastError();
+                    break;
             }
         });
 
@@ -353,6 +359,45 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             type: 'batchLog',
             data: { message, logType }
         });
+    }
+
+    /**
+     * Handle copy DOM info for debugging
+     */
+    private async handleCopyDOMInfo(): Promise<void> {
+        try {
+            // Initialize batch service if needed (to access CDP)
+            if (!this._batchPromptService) {
+                this._batchPromptService = new BatchPromptService(this._autoRetryService['cdpHandler']);
+            }
+
+            const domInfo = await this._batchPromptService.getDOMDebugInfo();
+            await vscode.env.clipboard.writeText(domInfo);
+            vscode.window.showInformationMessage('DOM info copied to clipboard');
+            this.sendBatchLog('DOM info copied!', 'success');
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Unknown error';
+            this.sendBatchLog(`Failed to get DOM info: ${msg}`, 'error');
+        }
+    }
+
+    /**
+     * Handle copy last error for debugging
+     */
+    private async handleCopyLastError(): Promise<void> {
+        if (!this._batchPromptService) {
+            this.sendBatchLog('No batch service initialized', 'warning');
+            return;
+        }
+
+        const lastError = this._batchPromptService.getLastError();
+        if (lastError) {
+            await vscode.env.clipboard.writeText(lastError);
+            vscode.window.showInformationMessage('Last error copied to clipboard');
+            this.sendBatchLog('Last error copied!', 'success');
+        } else {
+            this.sendBatchLog('No error to copy', 'info');
+        }
     }
 
     /**

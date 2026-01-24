@@ -27,12 +27,14 @@ export interface BatchState {
     status: BatchStatus;
     isRunning: boolean;
     error?: string;
+    lastError?: string;
 }
 
 export class BatchPromptService {
     private cdpHandler: CDPHandler;
     private state: BatchState;
     private selectors?: DOMSelectors;
+    private chatPageConnId?: string;  // Cached CDP connection for chat page
     private logCallback?: BatchLogCallback;
     private progressCallback?: BatchProgressCallback;
     private statusCallback?: BatchStatusCallback;
@@ -95,17 +97,35 @@ export class BatchPromptService {
     }
 
     /**
+     * Reset cached connection and selectors
+     * Call when CDP connections change or webview reloads
+     */
+    public resetConnection(): void {
+        this.chatPageConnId = undefined;
+        this.selectors = undefined;
+        this.log('Connection cache reset', 'info');
+    }
+
+    /**
      * Discover DOM selectors for Antigravity UI
      */
     async discoverSelectors(): Promise<DOMSelectors | null> {
         this.log('Discovering Antigravity DOM structure...', 'info');
 
         try {
-            const connId = this.getFirstConnectionId();
+            // Use getChatPageConnectionId to find the correct chat page, not just any connection
+            const connId = await this.cdpHandler.getChatPageConnectionId();
             if (!connId) {
-                this.log('No CDP connection available', 'error');
+                this.log('No CDP connection with chat interface found', 'error');
+                // Log available connections for debugging
+                const allConns = this.cdpHandler.getConnectionCount?.() || 0;
+                this.log(`Total CDP connections available: ${allConns}`, 'warning');
                 return null;
             }
+
+            // Cache this for later use
+            this.chatPageConnId = connId;
+            this.log(`Using CDP connection: ${connId.substring(connId.indexOf(':') + 1, connId.indexOf(':') + 9)}...`, 'info');
 
             const result = await this.cdpHandler.evaluate(
                 connId,
@@ -128,21 +148,33 @@ export class BatchPromptService {
                 const hasNullSelectors = !discovered.promptTextarea || !discovered.sendButton;
                 if (hasNullSelectors && debug) {
                     this.log(`--- DOM Debug Info ---`, 'warning');
+                    this.log(`Iframes found: ${debug.iframeCount || 0}, Docs searched: ${debug.docsSearched || 1}`, 'info');
+
                     if (debug.textareas?.length > 0) {
                         this.log(`Found ${debug.textareas.length} textarea(s):`, 'info');
                         for (const ta of debug.textareas.slice(0, 5)) {
-                            this.log(`  id="${ta.id}" placeholder="${ta.placeholder}" classes="${ta.classes}"`, 'info');
+                            this.log(`  [${ta.inIframe ? 'iframe' : 'main'}] id="${ta.id}" placeholder="${ta.placeholder}"`, 'info');
                         }
                     } else {
-                        this.log(`No textareas found in DOM`, 'warning');
+                        this.log(`No textareas found`, 'warning');
                     }
+
+                    if (debug.contentEditables?.length > 0) {
+                        this.log(`Found ${debug.contentEditables.length} contenteditable(s):`, 'info');
+                        for (const ce of debug.contentEditables.slice(0, 5)) {
+                            this.log(`  [${ce.inIframe ? 'iframe' : 'main'}] <${ce.tagName}> role="${ce.role}" aria="${ce.ariaLabel}"`, 'info');
+                        }
+                    } else {
+                        this.log(`No contenteditable elements found`, 'warning');
+                    }
+
                     if (debug.buttons?.length > 0) {
                         this.log(`Found ${debug.buttons.length} button(s):`, 'info');
                         for (const btn of debug.buttons.slice(0, 10)) {
-                            this.log(`  "${btn.text}" id="${btn.id}" aria="${btn.ariaLabel}"`, 'info');
+                            this.log(`  [${btn.inIframe ? 'iframe' : 'main'}] "${btn.text}" tooltip="${btn.tooltipId || 'none'}"`, 'info');
                         }
                     } else {
-                        this.log(`No buttons found in DOM`, 'warning');
+                        this.log(`No buttons found`, 'warning');
                     }
                 }
 
@@ -163,7 +195,7 @@ export class BatchPromptService {
     private getDiscoveryScript(): string {
         return `
 (function() {
-    const selectors = {
+    var selectors = {
         promptTextarea: null,
         sendButton: null,
         stopButton: null,
@@ -172,157 +204,266 @@ export class BatchPromptService {
     };
 
     // Debug info collector
-    const debug = {
+    var debug = {
         textareas: [],
-        buttons: []
+        contentEditables: [],
+        buttons: [],
+        iframeCount: 0,
+        docsSearched: 0
     };
 
-    // Find prompt textarea
-    const textareas = Array.from(document.querySelectorAll('textarea'));
-    for (const ta of textareas) {
-        const placeholder = ta.placeholder?.toLowerCase() || '';
-        const label = ta.getAttribute('aria-label')?.toLowerCase() || '';
-        const id = ta.id || '';
-        const classes = ta.className || '';
-        
-        // Collect debug info
-        debug.textareas.push({
-            id: id,
-            classes: classes.substring(0, 100),
-            placeholder: (ta.placeholder || '').substring(0, 50),
-            ariaLabel: (ta.getAttribute('aria-label') || '').substring(0, 50)
-        });
-        
-        if (placeholder.includes('prompt') || placeholder.includes('message') || placeholder.includes('ask') ||
-            label.includes('prompt') || label.includes('input') || label.includes('message') ||
-            id.toLowerCase().includes('prompt') || id.toLowerCase().includes('input')) {
-            if (id) {
-                selectors.promptTextarea = '#' + id;
-            } else if (classes) {
-                selectors.promptTextarea = 'textarea.' + classes.split(' ')[0];
-            } else {
-                selectors.promptTextarea = 'textarea[placeholder="' + ta.placeholder + '"]';
+    // Helper: Get all accessible documents (main + iframes)
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            debug.iframeCount = iframes.length;
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) {
+                        docs.push(iframeDoc);
+                    }
+                } catch (e) {}
             }
-            break;
-        }
+        } catch (e) {}
+        return docs;
     }
-    
-    // If no specific match, try first visible textarea
-    if (!selectors.promptTextarea && textareas.length > 0) {
-        for (const ta of textareas) {
-            if (ta.offsetParent !== null) { // is visible
-                const id = ta.id;
-                const classes = ta.className;
+
+    var allDocs = getAllDocs();
+    debug.docsSearched = allDocs.length;
+    // Find prompt textarea or contenteditable in all documents
+    for (var docIdx = 0; docIdx < allDocs.length && !selectors.promptTextarea; docIdx++) {
+        var doc = allDocs[docIdx];
+        var inIframe = docIdx > 0;
+        
+        // Check textareas
+        var textareas = doc.querySelectorAll('textarea');
+        for (var i = 0; i < textareas.length; i++) {
+            var ta = textareas[i];
+            var placeholder = (ta.placeholder || '').toLowerCase();
+            var label = (ta.getAttribute('aria-label') || '').toLowerCase();
+            var id = ta.id || '';
+            var classes = ta.className || '';
+            
+            // Collect debug info
+            debug.textareas.push({
+                id: id,
+                classes: (classes + '').substring(0, 100),
+                placeholder: (ta.placeholder || '').substring(0, 50),
+                ariaLabel: (ta.getAttribute('aria-label') || '').substring(0, 50),
+                inIframe: inIframe
+            });
+            
+            if (placeholder.indexOf('prompt') >= 0 || placeholder.indexOf('message') >= 0 || placeholder.indexOf('ask') >= 0 ||
+                label.indexOf('prompt') >= 0 || label.indexOf('input') >= 0 || label.indexOf('message') >= 0 ||
+                id.toLowerCase().indexOf('prompt') >= 0 || id.toLowerCase().indexOf('input') >= 0) {
                 if (id) {
                     selectors.promptTextarea = '#' + id;
                 } else if (classes) {
                     selectors.promptTextarea = 'textarea.' + classes.split(' ')[0];
+                } else {
+                    selectors.promptTextarea = 'textarea[placeholder="' + ta.placeholder + '"]';
+                }
+                break;
+            }
+        }
+        if (selectors.promptTextarea) break;
+        
+        // Check contenteditable elements (for Lexical editor)
+        var editables = doc.querySelectorAll('[contenteditable="true"]');
+        for (var i = 0; i < editables.length; i++) {
+            var el = editables[i];
+            var role = (el.getAttribute('role') || '').toLowerCase();
+            var label = (el.getAttribute('aria-label') || '').toLowerCase();
+            var id = el.id || '';
+            var classes = el.className || '';
+            
+            // Collect debug info
+            debug.contentEditables.push({
+                id: id,
+                tagName: el.tagName.toLowerCase(),
+                role: role,
+                classes: (classes + '').substring(0, 100),
+                ariaLabel: label.substring(0, 50),
+                inIframe: inIframe
+            });
+            
+            // Look for textbox role (used by Lexical)
+            if (role === 'textbox' || label.indexOf('prompt') >= 0 || label.indexOf('message') >= 0 || label.indexOf('input') >= 0) {
+                if (id) {
+                    selectors.promptTextarea = '#' + id;
+                } else if (role === 'textbox') {
+                    selectors.promptTextarea = '[contenteditable="true"][role="textbox"]';
+                } else {
+                    selectors.promptTextarea = '[contenteditable="true"]';
                 }
                 break;
             }
         }
     }
+    
+    // Fallback: try first visible textarea or contenteditable
+    if (!selectors.promptTextarea) {
+        for (var docIdx = 0; docIdx < allDocs.length && !selectors.promptTextarea; docIdx++) {
+            var doc = allDocs[docIdx];
+            
+            var textareas = doc.querySelectorAll('textarea');
+            for (var i = 0; i < textareas.length; i++) {
+                var ta = textareas[i];
+                if (ta.offsetParent !== null) {
+                    var id = ta.id;
+                    var classes = ta.className;
+                    if (id) {
+                        selectors.promptTextarea = '#' + id;
+                    } else if (classes) {
+                        selectors.promptTextarea = 'textarea.' + classes.split(' ')[0];
+                    }
+                    break;
+                }
+            }
+            if (selectors.promptTextarea) break;
+            
+            var editables = doc.querySelectorAll('[contenteditable="true"]');
+            for (var i = 0; i < editables.length; i++) {
+                var el = editables[i];
+                if (el.offsetParent !== null) {
+                    var role = el.getAttribute('role') || '';
+                    if (role === 'textbox') {
+                        selectors.promptTextarea = '[contenteditable="true"][role="textbox"]';
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
-    // Find buttons
-    const buttons = Array.from(document.querySelectorAll('button'));
-    for (const btn of buttons) {
-        const text = btn.textContent?.trim().toLowerCase() || '';
-        const label = btn.getAttribute('aria-label')?.toLowerCase() || '';
-        const title = btn.getAttribute('title')?.toLowerCase() || '';
-        const id = btn.id || '';
-        const classes = btn.className || '';
+
+    // Find buttons in all documents
+    for (var docIdx = 0; docIdx < allDocs.length; docIdx++) {
+        var doc = allDocs[docIdx];
+        var inIframe = docIdx > 0;
+        var buttons = doc.querySelectorAll('button');
         
-        // Collect debug info (first 30 buttons only)
-        if (debug.buttons.length < 30) {
-            debug.buttons.push({
-                id: id,
-                classes: classes.substring(0, 80),
-                text: text.substring(0, 30),
-                ariaLabel: (btn.getAttribute('aria-label') || '').substring(0, 30),
-                title: (btn.getAttribute('title') || '').substring(0, 30)
-            });
-        }
-        
-        // Match send button (title="Send" tooltip)
-        if (!selectors.sendButton) {
-            if (text === 'send' || text.includes('send') || label.includes('send') || title.includes('send') || title === 'send' ||
-                btn.querySelector('[class*="send"]') || btn.querySelector('[class*="submit"]') ||
-                classes.toLowerCase().includes('send') || id.toLowerCase().includes('send')) {
-                if (id) {
-                    selectors.sendButton = '#' + id;
-                } else if (classes && classes.trim()) {
-                    selectors.sendButton = 'button.' + classes.split(' ')[0];
-                } else {
-                    // Fallback: use title selector
-                    selectors.sendButton = 'button[title="Send"]';
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var text = (btn.textContent || '').trim().toLowerCase();
+            var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+            var title = (btn.getAttribute('title') || '').toLowerCase();
+            var tooltipId = btn.getAttribute('data-tooltip-id') || '';
+            var id = btn.id || '';
+            var classes = btn.className || '';
+            
+            // Collect debug info (first 30 buttons only)
+            if (debug.buttons.length < 30) {
+                debug.buttons.push({
+                    id: id,
+                    classes: (classes + '').substring(0, 80),
+                    text: text.substring(0, 30),
+                    ariaLabel: label.substring(0, 30),
+                    title: title.substring(0, 30),
+                    tooltipId: tooltipId,
+                    inIframe: inIframe
+                });
+            }
+            
+            // Match send button (tooltip: input-send-button-send-tooltip)
+            if (!selectors.sendButton) {
+                if (tooltipId === 'input-send-button-send-tooltip' ||
+                    text === 'send' || text.indexOf('send') >= 0 || 
+                    label.indexOf('send') >= 0 || title.indexOf('send') >= 0 ||
+                    (classes + '').toLowerCase().indexOf('send') >= 0 || 
+                    id.toLowerCase().indexOf('send') >= 0) {
+                    if (tooltipId) {
+                        selectors.sendButton = '[data-tooltip-id="' + tooltipId + '"]';
+                    } else if (id) {
+                        selectors.sendButton = '#' + id;
+                    } else if (classes && (classes + '').trim()) {
+                        selectors.sendButton = 'button.' + classes.split(' ')[0];
+                    } else {
+                        selectors.sendButton = 'button[title="Send"]';
+                    }
                 }
             }
-        }
-        
-        // Match stop/cancel button (red button during execution)
-        if (!selectors.stopButton) {
-            if (text === 'stop' || text === 'cancel' || text.includes('stop') || text.includes('cancel') ||
-                label.includes('stop') || label.includes('cancel') || 
-                title.includes('stop') || title.includes('cancel') ||
-                classes.toLowerCase().includes('stop') || classes.toLowerCase().includes('cancel') ||
-                id.toLowerCase().includes('stop') || id.toLowerCase().includes('cancel')) {
-                if (id) {
-                    selectors.stopButton = '#' + id;
-                } else if (classes && classes.trim()) {
-                    selectors.stopButton = 'button.' + classes.split(' ')[0];
-                } else {
-                    // Fallback: use aria-label or title selector
-                    selectors.stopButton = 'button[aria-label*=\"cancel\" i], button[title*=\"cancel\" i]';
+            
+            // Match stop/cancel button (tooltip: stop-button-tooltip)
+            if (!selectors.stopButton) {
+                if (tooltipId === 'stop-button-tooltip' ||
+                    text === 'stop' || text === 'cancel' || 
+                    text.indexOf('stop') >= 0 || text.indexOf('cancel') >= 0 ||
+                    label.indexOf('stop') >= 0 || label.indexOf('cancel') >= 0 || 
+                    title.indexOf('stop') >= 0 || title.indexOf('cancel') >= 0 ||
+                    (classes + '').toLowerCase().indexOf('stop') >= 0 || 
+                    (classes + '').toLowerCase().indexOf('cancel') >= 0) {
+                    if (tooltipId) {
+                        selectors.stopButton = '[data-tooltip-id="' + tooltipId + '"]';
+                    } else if (id) {
+                        selectors.stopButton = '#' + id;
+                    } else if (classes && (classes + '').trim()) {
+                        selectors.stopButton = 'button.' + classes.split(' ')[0];
+                    } else {
+                        selectors.stopButton = 'button[aria-label*="cancel" i], button[title*="cancel" i]';
+                    }
                 }
             }
-        }
-        
-        // Match new session button (title="Start a New Conversation" tooltip)
-        if (!selectors.newSessionButton) {
-            if ((text.includes('new') && (text.includes('chat') || text.includes('session') || text.includes('conversation'))) ||
-                (label.includes('new') && (label.includes('chat') || label.includes('session') || label.includes('conversation'))) ||
-                (title.includes('new') && title.includes('conversation')) ||
-                title.includes('start a new conversation') ||
-                classes.toLowerCase().includes('new-session') || classes.toLowerCase().includes('new-chat') ||
-                id.toLowerCase().includes('new')) {
-                if (id) {
-                    selectors.newSessionButton = '#' + id;
-                } else if (classes && classes.trim()) {
-                    selectors.newSessionButton = 'button.' + classes.split(' ')[0];
-                } else {
-                    // Fallback: use title selector
-                    selectors.newSessionButton = 'button[title*="New Conversation" i]';
+            
+            // Match new session button (tooltip: new-conversation-tooltip)
+            if (!selectors.newSessionButton) {
+                if (tooltipId === 'new-conversation-tooltip' ||
+                    (text.indexOf('new') >= 0 && (text.indexOf('chat') >= 0 || text.indexOf('session') >= 0 || text.indexOf('conversation') >= 0)) ||
+                    (label.indexOf('new') >= 0 && (label.indexOf('chat') >= 0 || label.indexOf('session') >= 0 || label.indexOf('conversation') >= 0)) ||
+                    (title.indexOf('new') >= 0 && title.indexOf('conversation') >= 0) ||
+                    title.indexOf('start a new conversation') >= 0) {
+                    if (tooltipId) {
+                        selectors.newSessionButton = '[data-tooltip-id="' + tooltipId + '"]';
+                    } else if (id) {
+                        selectors.newSessionButton = '#' + id;
+                    } else if (classes && (classes + '').trim()) {
+                        selectors.newSessionButton = 'button.' + classes.split(' ')[0];
+                    } else {
+                        selectors.newSessionButton = 'button[title*="New Conversation" i]';
+                    }
                 }
             }
-        }
-        
-        // Match retry button (indicates task was interrupted, not completed)
-        if (!selectors.retryButton) {
-            if (text === 'retry' || text.includes('retry') || 
-                label.includes('retry') || title.includes('retry') ||
-                classes.toLowerCase().includes('retry') || id.toLowerCase().includes('retry')) {
-                if (id) {
-                    selectors.retryButton = '#' + id;
-                } else if (classes && classes.trim()) {
-                    selectors.retryButton = 'button.' + classes.split(' ')[0];
-                } else {
-                    // Fallback
-                    selectors.retryButton = 'button[aria-label*="retry" i], button[title*="retry" i]';
+            
+            // Match retry button
+            if (!selectors.retryButton) {
+                if (text === 'retry' || text.indexOf('retry') >= 0 || 
+                    label.indexOf('retry') >= 0 || title.indexOf('retry') >= 0) {
+                    if (id) {
+                        selectors.retryButton = '#' + id;
+                    } else if (classes && (classes + '').trim()) {
+                        selectors.retryButton = 'button.' + classes.split(' ')[0];
+                    } else {
+                        selectors.retryButton = 'button[aria-label*="retry" i], button[title*="retry" i]';
+                    }
                 }
             }
         }
     }
 
     // Include debug info in output
-    return JSON.stringify({ selectors, debug });
+    return JSON.stringify({ selectors: selectors, debug: debug });
 })();
 `;
     }
 
     /**
-     * Get first available connection ID
+     * Get the connection ID for the chat page (prefer cached, fallback to first)
+     * Validates cached connection is still active
      */
-    private getFirstConnectionId(): string | null {
+    private getConnectionId(): string | null {
+        // Prefer the cached chat page connection, but verify it's still valid
+        if (this.chatPageConnId) {
+            // Check if we still have connections
+            if (this.cdpHandler.getConnectionCount() > 0) {
+                return this.chatPageConnId;
+            }
+            // Connection is no longer valid, clear cache
+            this.chatPageConnId = undefined;
+            this.log('Cached connection invalidated', 'warning');
+        }
+        // Fallback to first available
         return this.cdpHandler.getFirstConnectionId();
     }
 
@@ -422,29 +563,94 @@ export class BatchPromptService {
     }
 
     /**
-     * Fill prompt into textarea
+     * Fill prompt into textarea or contenteditable
+     * Uses CDP Input.insertText for Lexical/React compatibility
      */
     private async fillPrompt(prompt: string): Promise<boolean> {
-        if (!this.selectors?.promptTextarea) return false;
+        if (!this.selectors?.promptTextarea) {
+            this.log('No textarea selector', 'error');
+            return false;
+        }
 
-        const connId = this.getFirstConnectionId();
-        if (!connId) return false;
+        const connId = this.getConnectionId();
+        if (!connId) {
+            this.log('No CDP connection', 'error');
+            return false;
+        }
 
         try {
-            const script = `
+            // Step 1: Focus and clear the element
+            const focusScript = `
 (function() {
-    const textarea = document.querySelector('${this.selectors.promptTextarea}');
-    if (!textarea) return false;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var el = null;
+    var docs = getAllDocs();
+    for (var i = 0; i < docs.length; i++) {
+        el = docs[i].querySelector('${this.selectors.promptTextarea}');
+        if (el) break;
+    }
+
+    if (!el) {
+        return { success: false, error: 'Element not found', iframes: docs.length - 1 };
+    }
+
+    // Focus the element
+    el.focus();
     
-    textarea.value = ${JSON.stringify(prompt)};
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
+    // Clear existing content
+    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
+        var doc = el.ownerDocument;
+        var win = doc.defaultView || window;
+        var selection = win.getSelection();
+        if (selection) {
+            var range = doc.createRange();
+            range.selectNodeContents(el);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            doc.execCommand('delete', false, null);
+        }
+        if (el.textContent) el.textContent = '';
+    } else {
+        el.value = '';
+    }
+
+    return { success: true };
 })();
 `;
-            const result = await this.cdpHandler.evaluate(connId, script);
-            return result?.result?.value === true;
-        } catch (error) {
+            const focusResult = await this.cdpHandler.evaluate(connId, focusScript);
+            const focusData = focusResult?.result?.value;
+
+            if (!focusData?.success) {
+                this.log(`Focus failed: ${focusData?.error || 'unknown'}`, 'error');
+                return false;
+            }
+
+            // Step 2: Use CDP Input.insertText to type the text
+            const inserted = await this.cdpHandler.insertText(connId, prompt);
+
+            if (!inserted) {
+                this.log('CDP insertText failed', 'warning');
+                return false;
+            }
+
+            this.log('Text inserted via CDP', 'success');
+            return true;
+
+        } catch (error: any) {
+            this.log(`fillPrompt error: ${error.message}`, 'error');
             return false;
         }
     }
@@ -455,15 +661,34 @@ export class BatchPromptService {
     private async clickSend(): Promise<boolean> {
         if (!this.selectors?.sendButton) return false;
 
-        const connId = this.getFirstConnectionId();
+        const connId = this.getConnectionId();
         if (!connId) return false;
 
         try {
             const script = `
 (function() {
-    const btn = document.querySelector('${this.selectors.sendButton}');
-    if (!btn || btn.disabled) return false;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
     
+    var btn = null;
+    var docs = getAllDocs();
+    for (var i = 0; i < docs.length; i++) {
+        btn = docs[i].querySelector('${this.selectors.sendButton}');
+        if (btn) break;
+    }
+    
+    if (!btn || btn.disabled) return false;
     btn.click();
     return true;
 })();
@@ -544,25 +769,166 @@ export class BatchPromptService {
     }
 
     /**
-     * Check if agent is still running
+     * Check if agent is still running (task not complete)
+     * Uses double-check with delay to avoid false positives
      */
     private async isAgentRunning(): Promise<boolean> {
-        if (!this.selectors?.stopButton) return false;
+        const result = await this.checkAgentState();
 
-        const connId = this.getFirstConnectionId();
-        if (!connId) return false;
+        // If stop or retry button visible, definitely running
+        if (result.hasStopButton || result.hasRetryButton) {
+            return true;
+        }
+
+        // No stop and no retry - wait 1s and recheck to give auto-retry time
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const recheck = await this.checkAgentState();
+
+        // If still no stop button after 1s, consider complete
+        return recheck.hasStopButton || recheck.hasRetryButton;
+    }
+
+    /**
+     * Check current agent state (stop/retry buttons)
+     */
+    private async checkAgentState(): Promise<{ hasStopButton: boolean; hasRetryButton: boolean; debug?: string }> {
+        const connId = this.getConnectionId();
+        if (!connId) return { hasStopButton: false, hasRetryButton: false, debug: 'no connection' };
 
         try {
             const script = `
 (function() {
-    const btn = document.querySelector('${this.selectors.stopButton}');
-    return btn && !btn.disabled && btn.offsetParent !== null;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var docs = getAllDocs();
+    var hasStopButton = false;
+    var hasRetryButton = false;
+    var hasGenerating = false;
+    var debugInfo = 'docs:' + docs.length;
+    
+    for (var d = 0; d < docs.length; d++) {
+        var doc = docs[d];
+        
+        // Method 1: Check for stop button by tooltip-id
+        var stopBtn = doc.querySelector('[data-tooltip-id="stop-button-tooltip"]');
+        if (stopBtn && stopBtn.offsetParent !== null) {
+            hasStopButton = true;
+            debugInfo += ',tooltip-stop';
+        }
+        
+        // Method 2: Check all buttons for stop/cancel text
+        if (!hasStopButton) {
+            var buttons = doc.querySelectorAll('button');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                if (btn.offsetParent === null) continue;
+                
+                var text = (btn.textContent || '').toLowerCase();
+                var title = (btn.getAttribute('title') || '').toLowerCase();
+                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                
+                if (text.indexOf('stop') >= 0 || title.indexOf('stop') >= 0 || ariaLabel.indexOf('stop') >= 0 ||
+                    text.indexOf('cancel') >= 0 || title.indexOf('cancel') >= 0 || ariaLabel.indexOf('cancel') >= 0) {
+                    hasStopButton = true;
+                    debugInfo += ',text-stop';
+                    break;
+                }
+                
+                // Method 3: Check for square icon SVG (common stop icon)
+                var svg = btn.querySelector('svg');
+                if (svg) {
+                    var rect = svg.querySelector('rect');
+                    if (rect && !svg.querySelector('path')) {
+                        hasStopButton = true;
+                        debugInfo += ',svg-stop';
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Comprehensive running state text detection
+        var bodyText = doc.body ? (doc.body.innerText || '') : '';
+        
+        // Running state patterns - match with or without "..." suffix
+        var runningPatterns = [
+            'Generating', 'Running', 'Thinking', 'Analyzing', 'Analysing',
+            'Processing', 'Loading', 'Working', 'Executing', 'Computing',
+            'Searching', 'Reading', 'Writing', 'Waiting'
+        ];
+        
+        for (var p = 0; p < runningPatterns.length; p++) {
+            var pattern = runningPatterns[p];
+            // Check for pattern at start of a line or after whitespace
+            if (bodyText.indexOf(pattern) >= 0) {
+                hasGenerating = true;
+                debugInfo += ',' + pattern.toLowerCase();
+                break;
+            }
+        }
+        
+        // Also check for "Thought for Xs" or "Analyzed ~Xk" patterns
+        if (bodyText.match(/Thought for \d/)) {
+            hasGenerating = true;
+            debugInfo += ',thought-for';
+        }
+        if (bodyText.match(/Analyzed.+~?\d+k?/i)) {
+            hasGenerating = true;
+            debugInfo += ',analyzed';
+        }
+        
+        // Check for retry button
+        var allButtons = doc.querySelectorAll('button');
+        for (var i = 0; i < allButtons.length; i++) {
+            if (allButtons[i].offsetParent === null) continue;
+            var text = (allButtons[i].textContent || '').trim().toLowerCase();
+            var ariaLabel = (allButtons[i].getAttribute('aria-label') || '').toLowerCase();
+            if (text === 'retry' || text.indexOf('retry') >= 0 || ariaLabel.indexOf('retry') >= 0) {
+                hasRetryButton = true;
+                debugInfo += ',retry';
+                break;
+            }
+        }
+    }
+    
+    // If "Generating" text is visible, treat as stop button present (running state)
+    if (hasGenerating) {
+        hasStopButton = true;
+    }
+    
+    return { hasStopButton: hasStopButton, hasRetryButton: hasRetryButton, debug: debugInfo };
 })();
 `;
             const result = await this.cdpHandler.evaluate(connId, script);
-            return result?.result?.value === true;
+            const data = result?.result?.value;
+
+            if (data && typeof data === 'object') {
+                // Log for debugging
+                if (data.debug) {
+                    console.log('[BatchPrompt] checkAgentState:', data.debug);
+                }
+                return {
+                    hasStopButton: data.hasStopButton === true,
+                    hasRetryButton: data.hasRetryButton === true,
+                    debug: data.debug
+                };
+            }
+            return { hasStopButton: false, hasRetryButton: false, debug: 'no data' };
         } catch (error) {
-            return false;
+            return { hasStopButton: false, hasRetryButton: false, debug: 'error: ' + error };
         }
     }
 
@@ -570,21 +936,39 @@ export class BatchPromptService {
      * Check if Retry button is visible (indicates task was interrupted)
      */
     private async isRetryButtonVisible(): Promise<boolean> {
-        const connId = this.getFirstConnectionId();
+        const connId = this.getConnectionId();
         if (!connId) return false;
 
         try {
             const script = `
 (function() {
-    const buttons = Array.from(document.querySelectorAll('button'));
-    for (const btn of buttons) {
-        const text = btn.textContent?.trim().toLowerCase() || '';
-        const label = btn.getAttribute('aria-label')?.toLowerCase() || '';
-        const title = btn.getAttribute('title')?.toLowerCase() || '';
-        
-        if (text === 'retry' || text.includes('retry') || 
-            label.includes('retry') || title.includes('retry')) {
-            return btn.offsetParent !== null;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+    
+    var docs = getAllDocs();
+    for (var d = 0; d < docs.length; d++) {
+        var buttons = docs[d].querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var text = (btn.textContent || '').trim().toLowerCase();
+            var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+            var title = (btn.getAttribute('title') || '').toLowerCase();
+            
+            if (text === 'retry' || text.indexOf('retry') >= 0 || 
+                label.indexOf('retry') >= 0 || title.indexOf('retry') >= 0) {
+                return btn.offsetParent !== null;
+            }
         }
     }
     return false;
@@ -601,23 +985,41 @@ export class BatchPromptService {
      * Click Retry button when task was interrupted
      */
     private async clickRetryButton(): Promise<boolean> {
-        const connId = this.getFirstConnectionId();
+        const connId = this.getConnectionId();
         if (!connId) return false;
 
         try {
             const script = `
 (function() {
-    const buttons = Array.from(document.querySelectorAll('button'));
-    for (const btn of buttons) {
-        const text = btn.textContent?.trim().toLowerCase() || '';
-        const label = btn.getAttribute('aria-label')?.toLowerCase() || '';
-        const title = btn.getAttribute('title')?.toLowerCase() || '';
-        
-        if (text === 'retry' || text.includes('retry') || 
-            label.includes('retry') || title.includes('retry')) {
-            if (btn.offsetParent !== null) {
-                btn.click();
-                return true;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+    
+    var docs = getAllDocs();
+    for (var d = 0; d < docs.length; d++) {
+        var buttons = docs[d].querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var text = (btn.textContent || '').trim().toLowerCase();
+            var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+            var title = (btn.getAttribute('title') || '').toLowerCase();
+            
+            if (text === 'retry' || text.indexOf('retry') >= 0 || 
+                label.indexOf('retry') >= 0 || title.indexOf('retry') >= 0) {
+                if (btn.offsetParent !== null) {
+                    btn.click();
+                    return true;
+                }
             }
         }
     }
@@ -632,28 +1034,121 @@ export class BatchPromptService {
     }
 
     /**
-     * Create new session
+     * Create new session with multiple fallback strategies
      */
     private async createNewSession(): Promise<boolean> {
-        if (!this.selectors?.newSessionButton) return false;
-
-        const connId = this.getFirstConnectionId();
-        if (!connId) return false;
+        const connId = this.getConnectionId();
+        if (!connId) {
+            this.log('No CDP connection for new session', 'error');
+            return false;
+        }
 
         try {
-            const script = `
+            // Strategy 1 & 2: Search for new session button with flexible matching
+            const searchScript = `
 (function() {
-    const btn = document.querySelector('${this.selectors.newSessionButton}');
-    if (!btn) return false;
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var docs = getAllDocs();
     
-    btn.click();
-    return true;
+    // Try by tooltip ID first (most reliable)
+    for (var d = 0; d < docs.length; d++) {
+        var btn = docs[d].querySelector('[data-tooltip-id="new-conversation-tooltip"]');
+        if (btn) {
+            btn.click();
+            return { success: true, method: 'tooltip' };
+        }
+    }
+    
+    // Try by title attribute (exact and partial matches)
+    // Support multi-language: "Start a New Conversation", "开始新对话", etc.
+    var selectors = [
+        'button[title*="Start" i][title*="New" i][title*="Conversation" i]',
+        'button[title*="New" i][title*="Conversation" i]',
+        'button[title*="New" i][title*="Chat" i]',
+        '[title*="Start" i][title*="New" i][title*="Conversation" i]',
+        '[title*="New" i][title*="Conversation" i]',
+        'button[aria-label*="New" i][aria-label*="Chat" i]',
+        'button[aria-label*="New" i][aria-label*="Conversation" i]',
+        '[class*="new-conversation"]',
+        '[class*="new-chat"]',
+        '[class*="newConversation"]',
+        '[class*="newChat"]'
+    ];
+    
+    for (var d = 0; d < docs.length; d++) {
+        for (var s = 0; s < selectors.length; s++) {
+            try {
+                var btn = docs[d].querySelector(selectors[s]);
+                if (btn && btn.offsetParent !== null) {
+                    btn.click();
+                    return { success: true, method: 'css-selector', selector: selectors[s] };
+                }
+            } catch (e) {}
+        }
+    }
+    
+    // Try by button text/title content - also look for "+" buttons in title area
+    for (var d = 0; d < docs.length; d++) {
+        var buttons = docs[d].querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+            var text = (buttons[i].textContent || '').trim();
+            var title = (buttons[i].getAttribute('title') || '').toLowerCase();
+            var ariaLabel = (buttons[i].getAttribute('aria-label') || '').toLowerCase();
+            
+            // Check for "+" button which is common for new conversation
+            if (text === '+' || text === '＋') {
+                // Verify it's likely the new conversation button (check title/aria)
+                if (title.indexOf('new') >= 0 || title.indexOf('conversation') >= 0 ||
+                    ariaLabel.indexOf('new') >= 0 || ariaLabel.indexOf('conversation') >= 0 ||
+                    title.indexOf('start') >= 0) {
+                    if (buttons[i].offsetParent !== null) {
+                        buttons[i].click();
+                        return { success: true, method: 'plus-button' };
+                    }
+                }
+            }
+            
+            // Check text content
+            var textLower = text.toLowerCase();
+            if ((textLower.indexOf('new') >= 0 && (textLower.indexOf('chat') >= 0 || textLower.indexOf('conversation') >= 0)) ||
+                (title.indexOf('new') >= 0 && title.indexOf('conversation') >= 0) ||
+                (title.indexOf('start') >= 0 && title.indexOf('new') >= 0)) {
+                if (buttons[i].offsetParent !== null) {
+                    buttons[i].click();
+                    return { success: true, method: 'text-match' };
+                }
+            }
+        }
+    }
+    
+    return { success: false, searched: docs.length };
 })();
 `;
-            const result = await this.cdpHandler.evaluate(connId, script);
-            this.log('New session created', 'info');
-            return result?.result?.value === true;
-        } catch (error) {
+            const searchResult = await this.cdpHandler.evaluate(connId, searchScript);
+            if (searchResult?.result?.value?.success) {
+                this.log(`New session created via ${searchResult.result.value.method}`, 'success');
+                return true;
+            }
+
+            // Log what we searched for debugging
+            const searched = searchResult?.result?.value?.searched || 0;
+            this.log(`New session button not found (searched ${searched} docs)`, 'error');
+            return false;
+        } catch (error: any) {
+            this.log(`Create new session error: ${error.message}`, 'error');
             return false;
         }
     }
@@ -728,6 +1223,141 @@ export class BatchPromptService {
      */
     getBatchStatus(): BatchState {
         return { ...this.state };
+    }
+
+    /**
+     * Get last error message for copy functionality
+     */
+    getLastError(): string | undefined {
+        return this.state.lastError;
+    }
+
+    /**
+     * Shared helper script for iframe-aware DOM queries
+     * This is injected into all scripts to avoid duplication
+     */
+    private getAllDocsScript(): string {
+        return `
+function getAllDocs() {
+    var docs = [document];
+    try {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+            } catch (e) {}
+        }
+    } catch (e) {}
+    return docs;
+}
+function findElement(selector) {
+    var docs = getAllDocs();
+    for (var i = 0; i < docs.length; i++) {
+        var el = docs[i].querySelector(selector);
+        if (el) return el;
+    }
+    return null;
+}
+`;
+    }
+
+    /**
+     * Get DOM debug info for troubleshooting
+     */
+    async getDOMDebugInfo(): Promise<string> {
+        const connId = this.getConnectionId();
+        if (!connId) {
+            return 'No CDP connection available';
+        }
+
+        try {
+            const script = `
+(function() {
+    ${this.getAllDocsScript()}
+    
+    var info = { 
+        url: window.location.href, 
+        timestamp: new Date().toISOString(),
+        iframeCount: document.querySelectorAll('iframe').length,
+        accessibleIframes: getAllDocs().length - 1,
+        textareas: [],
+        buttons: [],
+        contentEditables: []
+    };
+    
+    var docs = getAllDocs();
+    for (var d = 0; d < docs.length; d++) {
+        var doc = docs[d];
+        
+        // Collect textareas
+        var textareas = doc.querySelectorAll('textarea');
+        for (var i = 0; i < textareas.length; i++) {
+            var ta = textareas[i];
+            info.textareas.push({
+                id: ta.id || '',
+                placeholder: ta.placeholder || '',
+                visible: ta.offsetParent !== null
+            });
+        }
+        
+        // Collect buttons
+        var buttons = doc.querySelectorAll('button, [role="button"]');
+        for (var i = 0; i < Math.min(buttons.length, 30); i++) {
+            var btn = buttons[i];
+            info.buttons.push({
+                text: (btn.textContent || '').trim().substring(0, 40),
+                title: btn.getAttribute('title') || '',
+                tooltipId: btn.getAttribute('data-tooltip-id') || '',
+                visible: btn.offsetParent !== null
+            });
+        }
+
+        // Collect contentEditables
+        var editables = doc.querySelectorAll('[contenteditable="true"]');
+        for (var i = 0; i < editables.length; i++) {
+            var ce = editables[i];
+            info.contentEditables.push({
+                role: ce.getAttribute('role') || '',
+                tag: ce.tagName,
+                visible: ce.offsetParent !== null
+            });
+        }
+    }
+    
+    return JSON.stringify(info);
+})();
+`;
+            const result = await this.cdpHandler.evaluate(connId, script);
+            const rawData = result?.result?.value;
+            if (!rawData) return 'Failed to retrieve DOM info';
+
+            const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+
+            const lines: string[] = [];
+            lines.push('=== DOM Debug Info ===');
+            lines.push('URL: ' + data.url);
+            lines.push('Iframes: ' + data.iframeCount + ' total, ' + data.accessibleIframes + ' accessible');
+            lines.push('');
+            lines.push('--- TEXTAREAS (' + data.textareas.length + ') ---');
+            for (const ta of data.textareas) {
+                lines.push('  [' + (ta.visible ? 'visible' : 'hidden') + '] id="' + ta.id + '" placeholder="' + ta.placeholder + '"');
+            }
+            lines.push('');
+            lines.push('--- CONTENTEDITABLES (' + data.contentEditables.length + ') ---');
+            for (const ce of data.contentEditables) {
+                lines.push('  [' + (ce.visible ? 'visible' : 'hidden') + '] role="' + ce.role + '" tag=' + ce.tag);
+            }
+            lines.push('');
+            lines.push('--- BUTTONS (first 30) ---');
+            for (const btn of data.buttons) {
+                lines.push('  [' + (btn.visible ? 'visible' : 'hidden') + '] "' + btn.text + '" tooltip="' + btn.tooltipId + '"');
+            }
+
+            return lines.join('\n');
+        } catch (error: any) {
+            return 'Error: ' + error.message;
+        }
     }
 
     /**

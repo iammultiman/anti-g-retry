@@ -310,8 +310,43 @@ export class CDPHandler {
                 params: {
                     expression,
                     userGesture: true,
-                    awaitPromise: true
+                    awaitPromise: true,
+                    returnByValue: true  // Ensure objects are serialized
                 }
+            }));
+        });
+    }
+
+    /**
+     * Insert text using CDP Input.insertText - works with Lexical/React editors
+     * This simulates real keyboard input which is properly handled by modern editors
+     */
+    public async insertText(id: string, text: string): Promise<boolean> {
+        const conn = this.connections.get(id);
+        if (!conn || conn.ws.readyState !== WebSocket.OPEN) return false;
+
+        return new Promise((resolve) => {
+            const currentId = this.msgId++;
+            const timeout = setTimeout(() => resolve(false), 5000);
+
+            const onMessage = (data: any) => {
+                try {
+                    const msg = JSON.parse(data.toString());
+                    if (msg.id === currentId) {
+                        conn.ws.off('message', onMessage);
+                        clearTimeout(timeout);
+                        resolve(!msg.error);
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            };
+
+            conn.ws.on('message', onMessage);
+            conn.ws.send(JSON.stringify({
+                id: currentId,
+                method: 'Input.insertText',
+                params: { text }
             }));
         });
     }
@@ -375,10 +410,100 @@ export class CDPHandler {
 
     /**
      * Get first available connection ID (for batch automation)
+     * Prefers connections that have chat interface elements
      */
     getFirstConnectionId(): string | null {
         const firstKey = this.connections.keys().next();
         return firstKey.done ? null : firstKey.value;
+    }
+
+    /**
+     * Find the CDP connection that has the chat interface (for batch automation)
+     * Searches iframes and scores connections to find the best match
+     */
+    async getChatPageConnectionId(): Promise<string | null> {
+        const checkScript = `
+(function() {
+    // Helper: Get all accessible documents (main + iframes)
+    function getAllDocs() {
+        const docs = [document];
+        const iframes = document.querySelectorAll('iframe');
+        for (const iframe of iframes) {
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (iframeDoc && iframeDoc.body) {
+                    docs.push(iframeDoc);
+                }
+            } catch (e) { }
+        }
+        return docs;
+    }
+    
+    // Search for chat elements across all docs
+    let score = 0;
+    let hasChatInput = false;
+    let hasSendBtn = false;
+    let hasNewChatBtn = false;
+    const iframeCount = document.querySelectorAll('iframe').length;
+    
+    for (const doc of getAllDocs()) {
+        if (doc.querySelector('div[contenteditable="true"][role="textbox"]')) {
+            hasChatInput = true;
+            score += 10;
+        }
+        if (doc.querySelector('[data-tooltip-id="input-send-button-send-tooltip"]')) {
+            hasSendBtn = true;
+            score += 5;
+        }
+        if (doc.querySelector('[data-tooltip-id="new-conversation-tooltip"]')) {
+            hasNewChatBtn = true;
+            score += 5;
+        }
+        if (doc.querySelector('[data-tooltip-id]')) {
+            score += 2;
+        }
+    }
+    
+    return {
+        score,
+        hasChatInput,
+        hasSendBtn,
+        hasNewChatBtn,
+        iframeCount,
+        url: window.location.href
+    };
+})();
+`;
+
+        let bestMatch: { id: string; score: number } | null = null;
+
+        for (const [id, conn] of this.connections) {
+            if (conn.ws.readyState !== 1) continue;
+
+            try {
+                const result = await this.evaluate(id, checkScript);
+                const data = result?.result?.value;
+
+                if (data && data.score > 0) {
+                    this.log(`CDP [${id.substring(id.indexOf(':') + 1, id.indexOf(':') + 9)}] score=${data.score} iframes=${data.iframeCount}`, 'info');
+
+                    if (!bestMatch || data.score > bestMatch.score) {
+                        bestMatch = { id, score: data.score };
+                    }
+                }
+            } catch (e) {
+                // Continue to next connection
+            }
+        }
+
+        if (bestMatch) {
+            this.log(`Best CDP: score=${bestMatch.score}`, 'success');
+            return bestMatch.id;
+        }
+
+        // Fallback to first available connection
+        this.log('No chat page found, using first connection', 'warning');
+        return this.getFirstConnectionId();
     }
 
     /**

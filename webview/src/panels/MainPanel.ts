@@ -61,7 +61,7 @@ export class MainPanel {
             <span class="codicon codicon-zap header-icon"></span>
             <div class="header-text">
               <h2>Agy Retry</h2>
-              <span class="subtitle">Zero-babysitting automation</span>
+              <span class="subtitle">v0.3.26 • Zero-babysitting automation</span>
             </div>
           </div>
           <div class="connection-badge" id="connection-badge">
@@ -75,9 +75,9 @@ export class MainPanel {
           <div class="notice-content">
             <span class="codicon codicon-info notice-icon"></span>
             <div class="notice-text">
-              <p class="notice-title">🚀 No CDP? Try <code>ragy</code>!</p>
-              <p class="notice-desc">Run <code>ragy</code> in terminal to launch Agy with CDP enabled.</p>
-              <p class="notice-hint">If it works, retry lives on. If not, maybe Google fixed it. Happy vibe coding! ✨</p>
+              <p class="notice-title">🚀 CDP Not Connected</p>
+              <p class="notice-desc">Run <code>ragy</code> in terminal to launch Antigravity with CDP enabled for auto-retry features.</p>
+              <p class="notice-hint">Install: <code>bun add -g @paean-ai/ragy</code> then run <code>ragy</code></p>
             </div>
           </div>
         </section>
@@ -133,47 +133,35 @@ export class MainPanel {
 
         <vscode-divider></vscode-divider>
 
-        <!-- Retry Stats Section -->
-        <section class="stats-section">
+        <!-- Retry Section - Compact Layout -->
+        <section class="retry-section-compact">
           <div class="section-header">
             <span class="codicon codicon-history"></span>
             <span class="section-title">Retry Statistics</span>
           </div>
-          <div class="stats-grid">
-            <div class="stat-card">
+          <!-- Merged Stats + Status Row -->
+          <div class="compact-stats-row">
+            <div class="stat-inline">
               <span class="stat-value" id="stat-session">0</span>
-              <span class="stat-label">Session</span>
+              <span class="stat-label-inline">Session</span>
             </div>
-            <div class="stat-card">
+            <span class="stat-separator">|</span>
+            <div class="stat-inline">
               <span class="stat-value" id="stat-total">0</span>
-              <span class="stat-label">Total</span>
+              <span class="stat-label-inline">Total</span>
             </div>
-          </div>
-        </section>
-
-        <vscode-divider></vscode-divider>
-
-        <!-- Status Section -->
-        <section class="status-section">
-          <div class="status-row">
-            <span class="status-label">Auto Retry:</span>
+            <span class="stat-separator">|</span>
+            <span class="status-label-inline">Auto:</span>
             <span id="auto-retry-status" class="status-badge status-off">OFF</span>
+            <span class="cdp-inline" id="connection-row">
+              <span class="status-label-inline">CDP:</span>
+              <span id="connection-count">0</span>
+            </span>
           </div>
-          <div class="status-row" id="connection-row" style="display: none;">
-            <span class="status-label">CDP Connections:</span>
-            <span id="connection-count">0</span>
-          </div>
-        </section>
-
-        <vscode-divider></vscode-divider>
-
-        <!-- Controls Section -->
-        <section class="controls-section">
-          <div class="checkbox-row">
-            <vscode-checkbox id="chk-auto-start">Auto-start on launch</vscode-checkbox>
-          </div>
-          <div class="button-row">
-            <vscode-button id="btn-toggle-auto-retry" appearance="primary" class="full-width">
+          <!-- Controls Row -->
+          <div class="controls-row-compact">
+            <vscode-checkbox id="chk-auto-start" class="compact-checkbox">Auto-start</vscode-checkbox>
+            <vscode-button id="btn-toggle-auto-retry" appearance="primary" class="retry-btn-compact">
               <span class="codicon codicon-play" id="btn-toggle-icon"></span>
               <span id="btn-toggle-text">Start</span>
             </vscode-button>
@@ -207,29 +195,27 @@ export class MainPanel {
           <div class="batch-config">
             <label class="input-label">Prompt Template</label>
             <textarea id="batch-prompt" class="batch-textarea" rows="4" placeholder="Enter your prompt here..."></textarea>
-            
-            <label class="input-label">Repeat Count (1-100)</label>
-            <input type="number" id="batch-repeat-count" class="batch-input" min="1" max="100" value="5" />
           </div>
 
-          <!-- Batch Status -->
-          <div class="batch-status" id="batch-status-row">
-            <span class="status-label">Status:</span>
+          <!-- Repeat Count + Status Row (Merged) -->
+          <div class="batch-inline-row">
+            <label class="input-label-inline">Count:</label>
+            <input type="number" id="batch-repeat-count" class="batch-input-small" min="1" max="100" value="5" />
+            <span class="status-label-inline">Status:</span>
             <span id="batch-status" class="status-badge status-off">Idle</span>
+            <span class="progress-inline">
+              <span id="batch-progress-text">0/0</span>
+            </span>
           </div>
           
-          <!-- Batch Progress -->
-          <div class="batch-progress" id="batch-progress-row">
-            <div class="progress-label">
-              <span>Progress:</span>
-              <span id="batch-progress-text">0 / 0</span>
-            </div>
+          <!-- Progress Bar -->
+          <div class="batch-progress-compact">
             <div class="progress-bar">
               <div id="batch-progress-fill" class="progress-fill" style="width: 0%"></div>
             </div>
           </div>
 
-          <!-- Batch Controls -->
+          <!-- Batch Controls with Labels -->
           <div class="batch-controls">
             <vscode-button id="btn-start-batch" appearance="primary" class="batch-btn">
               <span class="codicon codicon-play"></span>
@@ -237,24 +223,35 @@ export class MainPanel {
             </vscode-button>
             <vscode-button id="btn-pause-batch" appearance="secondary" class="batch-btn" disabled>
               <span class="codicon codicon-debug-pause"></span>
+              <span>Pause</span>
             </vscode-button>
             <vscode-button id="btn-stop-batch" appearance="secondary" class="batch-btn" disabled>
               <span class="codicon codicon-debug-stop"></span>
+              <span>Stop</span>
             </vscode-button>
           </div>
 
-          <!-- Batch Log (Collapsible) -->
-          <section class="collapsible collapsed" id="batch-log-section">
+          <!-- Batch Log (Initially Expanded) -->
+          <section class="collapsible" id="batch-log-section">
             <div class="collapsible-header" id="batch-log-header">
               <span class="codicon codicon-output"></span>
               <span>Batch Log</span>
-              <button class="copy-logs-btn" id="btn-copy-batch-logs" title="Copy all logs">
-                <span class="codicon codicon-copy"></span>
-              </button>
               <span class="codicon codicon-chevron-right collapse-icon"></span>
             </div>
             <div id="batch-log" class="batch-log-output collapsible-content">
               <div class="log-empty">Will show batch logs here</div>
+            </div>
+            <!-- Copy buttons below log area -->
+            <div class="log-actions" id="log-actions">
+              <button class="log-action-btn" id="btn-copy-batch-logs" title="Copy all logs">
+                <span class="codicon codicon-copy"></span> Copy All
+              </button>
+              <button class="log-action-btn" id="btn-copy-last-error" title="Copy last error">
+                <span class="codicon codicon-warning"></span> Error
+              </button>
+              <button class="log-action-btn" id="btn-copy-dom" title="Copy DOM info">
+                <span class="codicon codicon-file-code"></span> DOM
+              </button>
             </div>
           </section>
         </section>
@@ -343,6 +340,18 @@ export class MainPanel {
       e.stopPropagation();
       copyAllBatchLogs();
     });
+
+    // Copy DOM info button
+    document.getElementById('btn-copy-dom')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'copyDOMInfo' });
+    });
+
+    // Copy last error button
+    document.getElementById('btn-copy-last-error')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'copyLastError' });
+    });
   }
 }
 
@@ -374,9 +383,9 @@ export function updateAutoRetryStatus(running: boolean, retryCount: number, conn
     }
   }
 
-  // Update connection count
+  // Update connection count (now inline, always visible when running)
   if (connectionRow && connectionCountEl && connectionCount !== undefined) {
-    connectionRow.style.display = running ? 'flex' : 'none';
+    connectionRow.style.display = running ? 'inline' : 'none';
     connectionCountEl.textContent = String(connectionCount);
   }
 }
@@ -524,7 +533,7 @@ export function updateBatchStatus(status: string): void {
       stopBtn.disabled = false;
     } else {
       startBtn.disabled = false;
-      startBtn.innerHTML = '<span class="codicon codicon-play"></span><span>Start Batch</span>';
+      startBtn.innerHTML = '<span class="codicon codicon-play"></span><span>Start</span>';
       pauseBtn.disabled = true;
       stopBtn.disabled = true;
     }
