@@ -122,8 +122,8 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "npm run build",
-        "build": "webpack --mode production",
+        "vscode:prepublish": "node build-all.js",
+        "build": "node build-all.js",
         "build:dev": "webpack --mode development",
         "watch": "webpack --mode development --watch",
         "lint": "eslint src --ext ts",
