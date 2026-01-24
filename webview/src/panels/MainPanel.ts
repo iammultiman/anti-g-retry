@@ -76,16 +76,19 @@ export class MainPanel {
             <span class="codicon codicon-info notice-icon"></span>
             <div class="notice-text">
               <p class="notice-title">🚀 CDP Not Connected</p>
-              <p class="notice-desc">Run <code>ragy</code> in terminal to launch Antigravity with CDP enabled for auto-retry features.</p>
-              <p class="notice-hint">Install: <code>bun add -g @paean-ai/ragy</code> then run <code>ragy</code></p>
+              <p class="notice-desc">To enable auto-retry features, launch the IDE with CDP debugging enabled.</p>
+              <p class="notice-hint">Configure CDP port in settings, then restart your IDE with <code>--remote-debugging-port</code> flag.</p>
             </div>
+          </div>
+          <div class="notice-actions">
+            <vscode-button id="btn-open-cdp-settings" appearance="secondary" class="notice-btn">
+              <span class="codicon codicon-settings-gear"></span>
+              <span>Setup Guide</span>
+            </vscode-button>
           </div>
         </section>
 
-        <!-- CDP-dependent content wrapper -->
-        <div id="cdp-content">
-
-        <!-- Usage Stats Section -->
+        <!-- Usage Stats Section (Always Visible) -->
         <section class="usage-section" id="usage-section">
           <div class="section-header">
             <span class="codicon codicon-dashboard"></span>
@@ -132,6 +135,9 @@ export class MainPanel {
         </section>
 
         <vscode-divider></vscode-divider>
+
+        <!-- CDP-dependent content wrapper (Hidden when CDP not connected) -->
+        <div id="cdp-content">
 
         <!-- Retry Section - Compact Layout -->
         <section class="retry-section-compact">
@@ -351,6 +357,11 @@ export class MainPanel {
     document.getElementById('btn-copy-last-error')?.addEventListener('click', (e) => {
       e.stopPropagation();
       vscode.postMessage({ type: 'copyLastError' });
+    });
+
+    // CDP Settings button
+    document.getElementById('btn-open-cdp-settings')?.addEventListener('click', () => {
+      vscode.postMessage({ type: 'openCDPSettings' });
     });
   }
 }

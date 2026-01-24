@@ -88,6 +88,9 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                 case 'copyLastError':
                     await this.handleCopyLastError();
                     break;
+                case 'openCDPSettings':
+                    await this.handleOpenCDPSettings();
+                    break;
             }
         });
 
@@ -411,6 +414,44 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             this.sendBatchLog('Last error copied!', 'success');
         } else {
             this.sendBatchLog('No error to copy', 'info');
+        }
+    }
+
+    /**
+     * Handle opening CDP settings and showing setup guide
+     */
+    private async handleOpenCDPSettings(): Promise<void> {
+        const config = vscode.workspace.getConfiguration('agyRetry');
+        const cdpPort = config.get<number>('cdpPort', 31905);
+
+        // Show info message with setup guide
+        const selection = await vscode.window.showInformationMessage(
+            `CDP Setup Guide:\n\n` +
+            `1. Configure CDP Port: Currently set to ${cdpPort}\n` +
+            `2. Restart your IDE with the CDP flag:\n` +
+            `   --remote-debugging-port=${cdpPort}`,
+            { modal: false },
+            'Open Settings',
+            'Copy Launch Command'
+        );
+
+        if (selection === 'Open Settings') {
+            await vscode.commands.executeCommand('workbench.action.openSettings', 'agyRetry.cdpPort');
+        } else if (selection === 'Copy Launch Command') {
+            // Detect IDE type and generate appropriate command
+            const appName = vscode.env.appName.toLowerCase();
+            let launchCommand: string;
+
+            if (appName.includes('cursor')) {
+                launchCommand = `cursor --remote-debugging-port=${cdpPort}`;
+            } else if (appName.includes('antigravity')) {
+                launchCommand = `antigravity --remote-debugging-port=${cdpPort}`;
+            } else {
+                launchCommand = `code --remote-debugging-port=${cdpPort}`;
+            }
+
+            await vscode.env.clipboard.writeText(launchCommand);
+            vscode.window.showInformationMessage(`Launch command copied: ${launchCommand}`);
         }
     }
 

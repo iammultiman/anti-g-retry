@@ -799,6 +799,41 @@ vscode-button:hover {
   margin: 0;
 }
 
+.notice-hint code {
+  background: rgba(0, 212, 170, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  color: var(--color-primary);
+  font-style: normal;
+}
+
+.notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.notice-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  padding: 6px 12px !important;
+  min-height: 28px;
+}
+
+.notice-btn .codicon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.notice-btn span:not(.codicon) {
+  white-space: nowrap;
+}
+
 /* ============================================
    Compact Layout Styles (UI Optimization)
    ============================================ */
