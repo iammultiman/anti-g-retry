@@ -61,7 +61,7 @@ export class MainPanel {
             <span class="codicon codicon-zap header-icon"></span>
             <div class="header-text">
               <h2>Agy Retry</h2>
-              <span class="subtitle">v0.3.26 • Zero-babysitting automation</span>
+              <span class="subtitle">v0.4.0 • Antigravity Batch Automation</span>
             </div>
           </div>
           <div class="connection-badge" id="connection-badge">

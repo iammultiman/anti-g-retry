@@ -404,17 +404,24 @@ vscode-divider {
   opacity: 0.3;
 }
 
-/* Button styles */
+/* Button styles - Enhanced */
 vscode-button {
-  display: flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   gap: 6px;
   transition: all var(--transition-fast);
+  font-weight: 500;
+  text-align: center;
 }
 
 vscode-button .codicon {
   font-size: 14px;
+  flex-shrink: 0;
+}
+
+vscode-button span:not(.codicon) {
+  flex-shrink: 0;
 }
 
 vscode-button:hover {
@@ -564,10 +571,17 @@ vscode-button:hover {
 .batch-btn {
   flex: 1;
   font-size: 11px !important;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .batch-btn .codicon {
   font-size: 12px;
+  flex-shrink: 0;
+}
+
+.batch-btn span:not(.codicon) {
+  text-align: center;
 }
 
 .batch-log-header {

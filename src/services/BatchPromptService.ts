@@ -770,31 +770,46 @@ export class BatchPromptService {
 
     /**
      * Check if agent is still running (task not complete)
-     * Uses double-check with delay to avoid false positives
+     * Uses Send button visibility as primary indicator
      */
     private async isAgentRunning(): Promise<boolean> {
         const result = await this.checkAgentState();
 
-        // If stop or retry button visible, definitely running
-        if (result.hasStopButton || result.hasRetryButton) {
+        // If retry button visible, let auto-retry handle (treat as running)
+        if (result.hasRetryButton) {
             return true;
         }
 
-        // No stop and no retry - wait 1s and recheck to give auto-retry time
+        // If Send button visible (and no retry), task is complete
+        if (result.hasSendButtonVisible) {
+            return false;
+        }
+
+        // Neither Send nor Retry visible - wait 1s and recheck
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const recheck = await this.checkAgentState();
 
-        // If still no stop button after 1s, consider complete
-        return recheck.hasStopButton || recheck.hasRetryButton;
+        // If retry appeared, let auto-retry handle
+        if (recheck.hasRetryButton) {
+            return true;
+        }
+
+        // If Send visible now, complete
+        if (recheck.hasSendButtonVisible) {
+            return false;
+        }
+
+        // Still no Send button - agent is running
+        return true;
     }
 
     /**
-     * Check current agent state (stop/retry buttons)
+     * Check current agent state (send/retry buttons)
      */
-    private async checkAgentState(): Promise<{ hasStopButton: boolean; hasRetryButton: boolean; debug?: string }> {
+    private async checkAgentState(): Promise<{ hasSendButtonVisible: boolean; hasRetryButton: boolean; debug?: string }> {
         const connId = this.getConnectionId();
-        if (!connId) return { hasStopButton: false, hasRetryButton: false, debug: 'no connection' };
+        if (!connId) return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'no connection' };
 
         try {
             const script = `
@@ -814,88 +829,39 @@ export class BatchPromptService {
     }
 
     var docs = getAllDocs();
-    var hasStopButton = false;
+    var hasSendButtonVisible = false;
     var hasRetryButton = false;
-    var hasGenerating = false;
     var debugInfo = 'docs:' + docs.length;
     
     for (var d = 0; d < docs.length; d++) {
         var doc = docs[d];
         
-        // Method 1: Check for stop button by tooltip-id
-        var stopBtn = doc.querySelector('[data-tooltip-id="stop-button-tooltip"]');
-        if (stopBtn && stopBtn.offsetParent !== null) {
-            hasStopButton = true;
-            debugInfo += ',tooltip-stop';
-        }
-        
-        // Method 2: Check all buttons for stop/cancel text
-        if (!hasStopButton) {
-            var buttons = doc.querySelectorAll('button');
-            for (var i = 0; i < buttons.length; i++) {
-                var btn = buttons[i];
-                if (btn.offsetParent === null) continue;
-                
-                var text = (btn.textContent || '').toLowerCase();
-                var title = (btn.getAttribute('title') || '').toLowerCase();
-                var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                
-                if (text.indexOf('stop') >= 0 || title.indexOf('stop') >= 0 || ariaLabel.indexOf('stop') >= 0 ||
-                    text.indexOf('cancel') >= 0 || title.indexOf('cancel') >= 0 || ariaLabel.indexOf('cancel') >= 0) {
-                    hasStopButton = true;
-                    debugInfo += ',text-stop';
-                    break;
-                }
-                
-                // Method 3: Check for square icon SVG (common stop icon)
-                var svg = btn.querySelector('svg');
-                if (svg) {
-                    var rect = svg.querySelector('rect');
-                    if (rect && !svg.querySelector('path')) {
-                        hasStopButton = true;
-                        debugInfo += ',svg-stop';
-                        break;
-                    }
-                }
+        // PRIMARY: Check for Send button visibility
+        // When agent is running → Send button is NOT visible (replaced by Stop/Cancel)
+        // When task is complete → Send button IS visible (even if disabled)
+        var sendBtn = doc.querySelector('[data-tooltip-id="input-send-button-send-tooltip"]');
+        if (sendBtn) {
+            // Check if actually visible (has size and not hidden)
+            var rect = sendBtn.getBoundingClientRect();
+            var style = window.getComputedStyle(sendBtn);
+            var isVisible = rect.width > 0 && rect.height > 0 && 
+                            style.display !== 'none' && 
+                            style.visibility !== 'hidden' &&
+                            style.opacity !== '0';
+            if (isVisible) {
+                hasSendButtonVisible = true;
+                var isDisabled = sendBtn.disabled || sendBtn.getAttribute('disabled') !== null;
+                debugInfo += ',send-visible' + (isDisabled ? '-disabled' : '-enabled');
             }
-        }
-        
-        // Comprehensive running state text detection
-        var bodyText = doc.body ? (doc.body.innerText || '') : '';
-        
-        // Running state patterns - match with or without "..." suffix
-        var runningPatterns = [
-            'Generating', 'Running', 'Thinking', 'Analyzing', 'Analysing',
-            'Processing', 'Loading', 'Working', 'Executing', 'Computing',
-            'Searching', 'Reading', 'Writing', 'Waiting'
-        ];
-        
-        for (var p = 0; p < runningPatterns.length; p++) {
-            var pattern = runningPatterns[p];
-            // Check for pattern at start of a line or after whitespace
-            if (bodyText.indexOf(pattern) >= 0) {
-                hasGenerating = true;
-                debugInfo += ',' + pattern.toLowerCase();
-                break;
-            }
-        }
-        
-        // Also check for "Thought for Xs" or "Analyzed ~Xk" patterns
-        if (bodyText.match(/Thought for \d/)) {
-            hasGenerating = true;
-            debugInfo += ',thought-for';
-        }
-        if (bodyText.match(/Analyzed.+~?\d+k?/i)) {
-            hasGenerating = true;
-            debugInfo += ',analyzed';
         }
         
         // Check for retry button
         var allButtons = doc.querySelectorAll('button');
         for (var i = 0; i < allButtons.length; i++) {
-            if (allButtons[i].offsetParent === null) continue;
-            var text = (allButtons[i].textContent || '').trim().toLowerCase();
-            var ariaLabel = (allButtons[i].getAttribute('aria-label') || '').toLowerCase();
+            var btn = allButtons[i];
+            if (btn.offsetParent === null) continue;
+            var text = (btn.textContent || '').trim().toLowerCase();
+            var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
             if (text === 'retry' || text.indexOf('retry') >= 0 || ariaLabel.indexOf('retry') >= 0) {
                 hasRetryButton = true;
                 debugInfo += ',retry';
@@ -904,31 +870,27 @@ export class BatchPromptService {
         }
     }
     
-    // If "Generating" text is visible, treat as stop button present (running state)
-    if (hasGenerating) {
-        hasStopButton = true;
-    }
+    // COMPLETION LOGIC:
+    // - Retry button visible → task INTERRUPTED (let auto-retry handle, takes priority)
+    // - Send button visible (no retry) → task COMPLETE
+    // - Neither → agent is RUNNING (Send button replaced by Stop/Cancel)
     
-    return { hasStopButton: hasStopButton, hasRetryButton: hasRetryButton, debug: debugInfo };
+    return { hasSendButtonVisible: hasSendButtonVisible, hasRetryButton: hasRetryButton, debug: debugInfo };
 })();
 `;
             const result = await this.cdpHandler.evaluate(connId, script);
             const data = result?.result?.value;
 
             if (data && typeof data === 'object') {
-                // Log for debugging
-                if (data.debug) {
-                    console.log('[BatchPrompt] checkAgentState:', data.debug);
-                }
                 return {
-                    hasStopButton: data.hasStopButton === true,
+                    hasSendButtonVisible: data.hasSendButtonVisible === true,
                     hasRetryButton: data.hasRetryButton === true,
                     debug: data.debug
                 };
             }
-            return { hasStopButton: false, hasRetryButton: false, debug: 'no data' };
+            return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'no data' };
         } catch (error) {
-            return { hasStopButton: false, hasRetryButton: false, debug: 'error: ' + error };
+            return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'error: ' + error };
         }
     }
 
