@@ -424,34 +424,122 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration('agyRetry');
         const cdpPort = config.get<number>('cdpPort', 31905);
 
-        // Show info message with setup guide
-        const selection = await vscode.window.showInformationMessage(
-            `CDP Setup Guide:\n\n` +
-            `1. Configure CDP Port: Currently set to ${cdpPort}\n` +
-            `2. Restart your IDE with the CDP flag:\n` +
-            `   --remote-debugging-port=${cdpPort}`,
-            { modal: false },
-            'Open Settings',
-            'Copy Launch Command'
-        );
+        // Detect IDE type
+        const appName = vscode.env.appName.toLowerCase();
+        let ideName: string;
+        let ideCommand: string;
 
-        if (selection === 'Open Settings') {
-            await vscode.commands.executeCommand('workbench.action.openSettings', 'agyRetry.cdpPort');
-        } else if (selection === 'Copy Launch Command') {
-            // Detect IDE type and generate appropriate command
-            const appName = vscode.env.appName.toLowerCase();
-            let launchCommand: string;
+        if (appName.includes('cursor')) {
+            ideName = 'Cursor';
+            ideCommand = 'cursor';
+        } else if (appName.includes('antigravity')) {
+            ideName = 'Antigravity';
+            ideCommand = 'antigravity';
+        } else {
+            ideName = 'VS Code';
+            ideCommand = 'code';
+        }
 
-            if (appName.includes('cursor')) {
-                launchCommand = `cursor --remote-debugging-port=${cdpPort}`;
-            } else if (appName.includes('antigravity')) {
-                launchCommand = `antigravity --remote-debugging-port=${cdpPort}`;
-            } else {
-                launchCommand = `code --remote-debugging-port=${cdpPort}`;
+        // Show QuickPick with setup options
+        const selection = await vscode.window.showQuickPick([
+            {
+                label: '$(terminal) Create ragy Launch Script',
+                description: 'Copy shell script to create ~/bin/ragy',
+                detail: `Creates a convenient 'ragy' command to launch ${ideName} with CDP enabled`,
+                action: 'create-script'
+            },
+            {
+                label: '$(copy) Copy Launch Command',
+                description: `${ideCommand} --remote-debugging-port=${cdpPort}`,
+                detail: 'Copy the one-time launch command to clipboard',
+                action: 'copy-command'
+            },
+            {
+                label: '$(gear) Open CDP Settings',
+                description: `Current port: ${cdpPort}`,
+                detail: 'Configure CDP port and other settings',
+                action: 'open-settings'
+            },
+            {
+                label: '$(book) View Full Guide',
+                description: 'Show detailed setup instructions',
+                action: 'show-guide'
             }
+        ], {
+            title: '🚀 CDP Setup Guide',
+            placeHolder: 'Select an option to enable auto-retry features'
+        });
 
-            await vscode.env.clipboard.writeText(launchCommand);
-            vscode.window.showInformationMessage(`Launch command copied: ${launchCommand}`);
+        if (!selection) return;
+
+        switch (selection.action) {
+            case 'create-script': {
+                const scriptContent = `#!/bin/bash
+# ragy - Launch ${ideName} with CDP enabled for Agy Retry
+# Install: Save this as ~/bin/ragy and run: chmod +x ~/bin/ragy
+
+PORT=${cdpPort}
+echo "🚀 Launching ${ideName} with CDP on port $PORT..."
+${ideCommand} --remote-debugging-port=$PORT "$@"
+`;
+                await vscode.env.clipboard.writeText(scriptContent);
+
+                const createNow = await vscode.window.showInformationMessage(
+                    'Script copied! Run in terminal to install:\n\nmkdir -p ~/bin && pbpaste > ~/bin/ragy && chmod +x ~/bin/ragy',
+                    'Copy Install Command'
+                );
+
+                if (createNow === 'Copy Install Command') {
+                    await vscode.env.clipboard.writeText('mkdir -p ~/bin && pbpaste > ~/bin/ragy && chmod +x ~/bin/ragy');
+                    vscode.window.showInformationMessage('Install command copied! Paste in terminal to create ragy script.');
+                }
+                break;
+            }
+            case 'copy-command': {
+                const launchCommand = `${ideCommand} --remote-debugging-port=${cdpPort}`;
+                await vscode.env.clipboard.writeText(launchCommand);
+                vscode.window.showInformationMessage(`Copied: ${launchCommand}`);
+                break;
+            }
+            case 'open-settings':
+                await vscode.commands.executeCommand('workbench.action.openSettings', 'agyRetry.cdpPort');
+                break;
+            case 'show-guide': {
+                const guideContent = `# Agy Retry CDP Setup Guide
+
+## Quick Setup (Recommended)
+
+1. Click "Create ragy Launch Script" to copy the script
+2. Run the install command in terminal
+3. Add ~/bin to your PATH if not already: \`echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc\`
+4. Restart terminal and run: \`ragy\`
+
+## Manual Setup
+
+Launch your IDE with CDP enabled:
+\`\`\`
+${ideCommand} --remote-debugging-port=${cdpPort}
+\`\`\`
+
+## Verify Connection
+
+After launching with CDP:
+- The "CDP Not Connected" notice should disappear
+- Auto Retry and Batch Automation features will become available
+
+## Configure Port
+
+Current CDP Port: ${cdpPort}
+Change in Settings > Extensions > Agy Retry > CDP Port
+`;
+                // Create a temporary document with the guide
+                const doc = await vscode.workspace.openTextDocument({
+                    content: guideContent,
+                    language: 'markdown'
+                });
+                await vscode.window.showTextDocument(doc, { preview: true });
+                break;
+            }
         }
     }
 

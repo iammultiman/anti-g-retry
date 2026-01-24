@@ -83,7 +83,7 @@ export class MainPanel {
           <div class="notice-actions">
             <vscode-button id="btn-open-cdp-settings" appearance="secondary" class="notice-btn">
               <span class="codicon codicon-settings-gear"></span>
-              <span>Setup Guide</span>
+              <span>Setup</span>
             </vscode-button>
           </div>
         </section>
