@@ -481,14 +481,16 @@ export class BatchPromptService {
             return false;
         }
 
-        // Discover selectors if not already done
-        if (!this.selectors) {
-            const discovered = await this.discoverSelectors();
-            if (!discovered) {
-                this.log('Cannot start: selectors not discovered', 'error');
-                this.updateStatus('error');
-                return false;
-            }
+        // ALWAYS force fresh discovery at batch start to avoid stale CDP connections
+        this.selectors = undefined;
+        this.chatPageConnId = undefined;
+        this.log('Discovering Antigravity DOM structure...', 'info');
+
+        const discovered = await this.discoverSelectors();
+        if (!discovered) {
+            this.log('Cannot start: selectors not discovered', 'error');
+            this.updateStatus('error');
+            return false;
         }
 
         this.state = {
@@ -565,22 +567,231 @@ export class BatchPromptService {
     /**
      * Fill prompt into textarea or contenteditable
      * Uses CDP Input.insertText for Lexical/React compatibility
+     * Enhanced with fill-then-verify retry loop for resilience (v0.4.5)
      */
     private async fillPrompt(prompt: string): Promise<boolean> {
         if (!this.selectors?.promptTextarea) {
-            this.log('No textarea selector', 'error');
+            this.log('No textarea selector found', 'error');
             return false;
         }
 
         const connId = this.getConnectionId();
         if (!connId) {
-            this.log('No CDP connection', 'error');
+            this.log('No CDP connection available', 'error');
             return false;
         }
 
+        // Fill-then-verify retry loop: up to 3 fill attempts
+        const maxFillAttempts = 3;
+        for (let fillAttempt = 1; fillAttempt <= maxFillAttempts; fillAttempt++) {
+            try {
+                // Step 1: Focus and clear the element
+                const focusScript = `
+(function() {
+    function getAllDocs() {
+        var docs = [document];
         try {
-            // Step 1: Focus and clear the element
-            const focusScript = `
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var el = null;
+    var docs = getAllDocs();
+    var foundInDoc = -1;
+    
+    for (var i = 0; i < docs.length; i++) {
+        el = docs[i].querySelector('${this.selectors.promptTextarea}');
+        if (el) {
+            foundInDoc = i;
+            break;
+        }
+    }
+
+    if (!el) {
+        var allContentEditable = [];
+        for (var i = 0; i < docs.length; i++) {
+            var ces = docs[i].querySelectorAll('[contenteditable="true"]');
+            for (var j = 0; j < ces.length; j++) {
+                allContentEditable.push({
+                    doc: i,
+                    role: ces[j].getAttribute('role'),
+                    tag: ces[j].tagName,
+                    visible: ces[j].offsetParent !== null
+                });
+            }
+        }
+        return { 
+            success: false, 
+            error: 'Element not found', 
+            docsSearched: docs.length,
+            selector: '${this.selectors.promptTextarea}',
+            allContentEditable: allContentEditable
+        };
+    }
+
+    var rect = el.getBoundingClientRect();
+    var isVisible = rect.width > 0 && rect.height > 0;
+    if (!isVisible) {
+        return { success: false, error: 'Element found but not visible', foundInDoc: foundInDoc };
+    }
+
+    el.focus();
+    
+    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
+        var doc = el.ownerDocument;
+        var win = doc.defaultView || window;
+        var selection = win.getSelection();
+        if (selection) {
+            var range = doc.createRange();
+            range.selectNodeContents(el);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            doc.execCommand('delete', false, null);
+        }
+        if (el.textContent) el.textContent = '';
+    } else {
+        el.value = '';
+    }
+
+    return { success: true, foundInDoc: foundInDoc, isContentEditable: el.getAttribute('contenteditable') === 'true' };
+})();
+`;
+                const focusResult = await this.cdpHandler.evaluate(connId, focusScript);
+                const focusData = focusResult?.result?.value;
+
+                if (!focusData?.success) {
+                    if (fillAttempt < maxFillAttempts) {
+                        this.log(`Focus failed (attempt ${fillAttempt}/${maxFillAttempts}): ${focusData?.error || 'unknown'}`, 'warning');
+                        // Re-discover selectors if element not found
+                        if (focusData?.error === 'Element not found') {
+                            this.log('Re-discovering selectors...', 'info');
+                            await this.discoverSelectors();
+                        }
+                        await this.sleep(800);
+                        continue;
+                    }
+                    this.log(`Focus failed: ${focusData?.error || 'unknown'}`, 'error');
+                    if (focusData?.allContentEditable) {
+                        this.log(`Found ${focusData.allContentEditable.length} contenteditable(s)`, 'warning');
+                    }
+                    return false;
+                }
+
+                if (fillAttempt === 1) {
+                    this.log(`Input found in doc ${focusData.foundInDoc}, contentEditable=${focusData.isContentEditable}`, 'info');
+                }
+
+                // Step 2: Use CDP Input.insertText to type the text
+                const inserted = await this.cdpHandler.insertText(connId, prompt);
+
+                if (!inserted) {
+                    if (fillAttempt < maxFillAttempts) {
+                        this.log(`CDP insertText failed (attempt ${fillAttempt}/${maxFillAttempts})`, 'warning');
+                        await this.sleep(500);
+                        continue;
+                    }
+                    this.log('CDP insertText returned false', 'error');
+                    return false;
+                }
+
+                // Step 3: Send-First Verification (v0.4.6)
+                // Primary signal: If Send button is clickable, text is ready
+                // This bypasses unreliable textContent checks for Lexical editors
+                await this.sleep(400); // Brief wait for React state sync
+
+                const sendCheckScript = `
+(function() {
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var docs = getAllDocs();
+    var sendBtn = null;
+    
+    // Find Send button
+    for (var i = 0; i < docs.length; i++) {
+        sendBtn = docs[i].querySelector('[data-tooltip-id="input-send-button-send-tooltip"]');
+        if (!sendBtn) {
+            sendBtn = docs[i].querySelector('button[aria-label*="send" i]');
+        }
+        if (sendBtn) break;
+    }
+    
+    if (!sendBtn) {
+        return { sendClickable: false, reason: 'not-found' };
+    }
+    
+    var rect = sendBtn.getBoundingClientRect();
+    var style = window.getComputedStyle(sendBtn);
+    var isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    var isDisabled = sendBtn.disabled || 
+                     sendBtn.getAttribute('disabled') !== null ||
+                     sendBtn.getAttribute('aria-disabled') === 'true' ||
+                     style.pointerEvents === 'none' ||
+                     style.opacity === '0';
+    
+    return { 
+        sendClickable: isVisible && !isDisabled, 
+        isVisible: isVisible, 
+        isDisabled: isDisabled 
+    };
+})();
+`;
+                const sendCheckResult = await this.cdpHandler.evaluate(connId, sendCheckScript);
+                const sendData = sendCheckResult?.result?.value;
+
+                if (sendData?.sendClickable) {
+                    this.log('Text ready (Send button clickable)', 'success');
+                    return true;
+                }
+
+                // Send button not clickable yet - retry with increasing delays
+                const maxSendRetries = 3;
+                for (let sendRetry = 1; sendRetry <= maxSendRetries; sendRetry++) {
+                    await this.sleep(300 * sendRetry); // 300ms, 600ms, 900ms
+
+                    const retryResult = await this.cdpHandler.evaluate(connId, sendCheckScript);
+                    const retryData = retryResult?.result?.value;
+
+                    if (retryData?.sendClickable) {
+                        this.log('Text ready (Send button clickable)', 'success');
+                        return true;
+                    }
+                }
+
+                // v0.4.7: Check if task has already started running
+                // This happens when the agent reads and processes the prompt immediately
+                // after text insertion - the Send button becomes hidden/Stop button appears
+                const runningCheck = await this.checkAgentState();
+                if (runningCheck.hasStopButton) {
+                    this.log('Task already started (Stop button visible)', 'success');
+                    return true;
+                }
+                if (!runningCheck.hasSendButtonVisible && !runningCheck.hasRetryButton) {
+                    // Send button disappeared but no Retry button = agent is processing
+                    this.log('Task already started (Send button hidden)', 'success');
+                    return true;
+                }
+
+                // Fallback: check textContent as diagnostic (not blocking)
+                const textCheckScript = `
 (function() {
     function getAllDocs() {
         var docs = [document];
@@ -599,73 +810,80 @@ export class BatchPromptService {
     var el = null;
     var docs = getAllDocs();
     for (var i = 0; i < docs.length; i++) {
-        el = docs[i].querySelector('${this.selectors.promptTextarea}');
+        el = docs[i].querySelector('${this.selectors?.promptTextarea}');
         if (el) break;
     }
-
-    if (!el) {
-        return { success: false, error: 'Element not found', iframes: docs.length - 1 };
-    }
-
-    // Focus the element
-    el.focus();
     
-    // Clear existing content
-    if (el.getAttribute && el.getAttribute('contenteditable') === 'true') {
-        var doc = el.ownerDocument;
-        var win = doc.defaultView || window;
-        var selection = win.getSelection();
-        if (selection) {
-            var range = doc.createRange();
-            range.selectNodeContents(el);
-            selection.removeAllRanges();
-            selection.addRange(range);
-            doc.execCommand('delete', false, null);
-        }
-        if (el.textContent) el.textContent = '';
-    } else {
-        el.value = '';
-    }
-
-    return { success: true };
+    if (!el) return { hasText: false, error: 'element-gone' };
+    
+    var content = el.textContent || el.innerText || el.value || '';
+    return { hasText: content.length > 0, contentLength: content.length };
 })();
 `;
-            const focusResult = await this.cdpHandler.evaluate(connId, focusScript);
-            const focusData = focusResult?.result?.value;
+                const textResult = await this.cdpHandler.evaluate(connId, textCheckScript);
+                const textData = textResult?.result?.value;
 
-            if (!focusData?.success) {
-                this.log(`Focus failed: ${focusData?.error || 'unknown'}`, 'error');
+                // Handle element-gone: re-discover and retry fill
+                if (textData?.error === 'element-gone') {
+                    if (fillAttempt < maxFillAttempts) {
+                        this.log('Input element disappeared - re-discovering selectors...', 'warning');
+                        await this.discoverSelectors();
+                    }
+                    continue; // Retry fill
+                }
+
+                // If textContent exists but Send still disabled, proceed anyway
+                // Lexical internal state may be correct even if DOM doesn't reflect it
+                if (textData?.hasText) {
+                    this.log(`Text inserted (${textData.contentLength} chars), Send not ready yet`, 'warning');
+                    return true; // Proceed to clickSend which has its own retry
+                }
+
+                // Neither Send clickable nor text visible - retry fill
+                if (fillAttempt < maxFillAttempts) {
+                    this.log(`Fill verification inconclusive, retrying (${fillAttempt}/${maxFillAttempts})...`, 'warning');
+                    await this.sleep(500);
+                    continue;
+                }
+
+                this.log('Fill verification failed after all attempts', 'error');
+                return false;
+
+            } catch (error: any) {
+                if (fillAttempt < maxFillAttempts) {
+                    this.log(`fillPrompt error (attempt ${fillAttempt}/${maxFillAttempts}): ${error.message}`, 'warning');
+                    await this.sleep(500);
+                    continue;
+                }
+                this.log(`fillPrompt error: ${error.message}`, 'error');
                 return false;
             }
-
-            // Step 2: Use CDP Input.insertText to type the text
-            const inserted = await this.cdpHandler.insertText(connId, prompt);
-
-            if (!inserted) {
-                this.log('CDP insertText failed', 'warning');
-                return false;
-            }
-
-            this.log('Text inserted via CDP', 'success');
-            return true;
-
-        } catch (error: any) {
-            this.log(`fillPrompt error: ${error.message}`, 'error');
-            return false;
         }
+
+        return false;
     }
 
     /**
-     * Click send button
+     * Click send button with retry mechanism
+     * Handles React state update delays after text insertion
      */
     private async clickSend(): Promise<boolean> {
-        if (!this.selectors?.sendButton) return false;
+        if (!this.selectors?.sendButton) {
+            this.log('No send button selector', 'error');
+            return false;
+        }
 
         const connId = this.getConnectionId();
-        if (!connId) return false;
+        if (!connId) {
+            this.log('No CDP connection for send', 'error');
+            return false;
+        }
 
-        try {
-            const script = `
+        // Retry up to 5 times with increasing delays to handle React state updates
+        const maxRetries = 5;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const script = `
 (function() {
     function getAllDocs() {
         var docs = [document];
@@ -683,21 +901,96 @@ export class BatchPromptService {
     
     var btn = null;
     var docs = getAllDocs();
+    
+    // Try primary selector first
     for (var i = 0; i < docs.length; i++) {
-        btn = docs[i].querySelector('${this.selectors.sendButton}');
+        btn = docs[i].querySelector('${this.selectors?.sendButton}');
         if (btn) break;
     }
     
-    if (!btn || btn.disabled) return false;
+    // Fallback: try additional send button selectors
+    if (!btn) {
+        var fallbackSelectors = [
+            '[data-tooltip-id="input-send-button-send-tooltip"]',
+            'button[aria-label*="send" i]',
+            'button[title*="send" i]',
+            '[class*="send-button"]',
+            '[class*="sendButton"]'
+        ];
+        for (var i = 0; i < docs.length && !btn; i++) {
+            for (var s = 0; s < fallbackSelectors.length && !btn; s++) {
+                try {
+                    btn = docs[i].querySelector(fallbackSelectors[s]);
+                } catch (e) {}
+            }
+        }
+    }
+    
+    if (!btn) {
+        return { success: false, reason: 'not-found', docs: docs.length };
+    }
+    
+    // Check visibility
+    var rect = btn.getBoundingClientRect();
+    var style = window.getComputedStyle(btn);
+    var isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    if (!isVisible) {
+        return { success: false, reason: 'not-visible' };
+    }
+    
+    // Check disabled state (multiple ways to detect)
+    var isDisabled = btn.disabled || 
+                     btn.getAttribute('disabled') !== null ||
+                     btn.getAttribute('aria-disabled') === 'true' ||
+                     style.pointerEvents === 'none' ||
+                     style.opacity === '0';
+    if (isDisabled) {
+        return { success: false, reason: 'disabled' };
+    }
+    
+    // Click the button
     btn.click();
-    return true;
+    return { success: true };
 })();
 `;
-            const result = await this.cdpHandler.evaluate(connId, script);
-            return result?.result?.value === true;
-        } catch (error) {
-            return false;
+                const result = await this.cdpHandler.evaluate(connId, script);
+                const data = result?.result?.value;
+
+                if (data?.success === true) {
+                    return true;
+                }
+
+                // Log the failure reason for debugging
+                const reason = data?.reason || 'unknown';
+
+                if (reason === 'disabled' && attempt < maxRetries) {
+                    // Button is disabled, wait for React to update state and retry
+                    await this.sleep(300 * attempt); // Increasing delay: 300, 600, 900, 1200ms
+                    continue;
+                }
+
+                if (reason === 'not-found') {
+                    this.log(`Send button not found (searched ${data?.docs || 0} docs)`, 'warning');
+                } else if (reason === 'not-visible') {
+                    this.log('Send button not visible', 'warning');
+                } else if (reason === 'disabled') {
+                    this.log('Send button still disabled after retries', 'warning');
+                }
+
+                if (attempt === maxRetries) {
+                    return false;
+                }
+
+                await this.sleep(200);
+            } catch (error) {
+                if (attempt === maxRetries) {
+                    return false;
+                }
+                await this.sleep(200);
+            }
         }
+
+        return false;
     }
 
     /**
@@ -705,7 +998,7 @@ export class BatchPromptService {
      */
     private monitorCompletion(): void {
         let checkCount = 0;
-        const maxChecks = 600; // 10 minutes max (600 * 1s)
+        const maxChecks = 18000; // 5 hours max (18000 * 1s)
 
         this.monitorTimer = setInterval(async () => {
             checkCount++;
@@ -770,46 +1063,58 @@ export class BatchPromptService {
 
     /**
      * Check if agent is still running (task not complete)
-     * Uses Send button visibility as primary indicator
+     * Uses Send button visibility as primary indicator with TRIPLE-CHECK verification
+     * Balanced approach: not too strict, not too loose
      */
     private async isAgentRunning(): Promise<boolean> {
-        const result = await this.checkAgentState();
+        // Check 1: Initial state
+        const check1 = await this.checkAgentState();
 
-        // If retry button visible, let auto-retry handle (treat as running)
-        if (result.hasRetryButton) {
+        // If retry button visible, let auto-retry handle
+        if (check1.hasRetryButton) {
             return true;
         }
 
-        // If Send button visible (and no retry), task is complete
-        if (result.hasSendButtonVisible) {
-            return false;
-        }
-
-        // Neither Send nor Retry visible - wait 1s and recheck
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const recheck = await this.checkAgentState();
-
-        // If retry appeared, let auto-retry handle
-        if (recheck.hasRetryButton) {
+        // If Stop button is visible, agent is definitely running
+        if (check1.hasStopButton) {
             return true;
         }
 
-        // If Send visible now, complete
-        if (recheck.hasSendButtonVisible) {
-            return false;
+        // If Send button NOT visible, agent is running
+        if (!check1.hasSendButtonVisible) {
+            return true;
         }
 
-        // Still no Send button - agent is running
-        return true;
+        // Send button appeared - verify with 2 more checks (1s intervals)
+        // This catches brief UI transitions but isn't overly strict
+        await this.sleep(1000);
+        const check2 = await this.checkAgentState();
+
+        if (check2.hasRetryButton || check2.hasStopButton || !check2.hasSendButtonVisible) {
+            return true; // Still running or interrupted
+        }
+
+        // Final check after another 1s
+        await this.sleep(1000);
+        const check3 = await this.checkAgentState();
+
+        if (check3.hasRetryButton || check3.hasStopButton || !check3.hasSendButtonVisible) {
+            return true; // Still running or interrupted
+        }
+
+        // All 3 checks (over ~2s) confirm Send button visible, no Stop button
+        // This is a stable COMPLETE state
+        this.log(`Completion verified after 3 checks`, 'info');
+        return false;
     }
 
     /**
-     * Check current agent state (send/retry buttons)
+     * Check current agent state (send/stop/retry buttons)
+     * Focused on button visibility - removed broad text pattern matching
      */
-    private async checkAgentState(): Promise<{ hasSendButtonVisible: boolean; hasRetryButton: boolean; debug?: string }> {
+    private async checkAgentState(): Promise<{ hasSendButtonVisible: boolean; hasRetryButton: boolean; hasStopButton: boolean; debug?: string }> {
         const connId = this.getConnectionId();
-        if (!connId) return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'no connection' };
+        if (!connId) return { hasSendButtonVisible: false, hasRetryButton: false, hasStopButton: false, debug: 'no connection' };
 
         try {
             const script = `
@@ -831,17 +1136,27 @@ export class BatchPromptService {
     var docs = getAllDocs();
     var hasSendButtonVisible = false;
     var hasRetryButton = false;
+    var hasStopButton = false;
     var debugInfo = 'docs:' + docs.length;
     
     for (var d = 0; d < docs.length; d++) {
         var doc = docs[d];
         
-        // PRIMARY: Check for Send button visibility
-        // When agent is running → Send button is NOT visible (replaced by Stop/Cancel)
-        // When task is complete → Send button IS visible (even if disabled)
+        // CHECK 1: Stop/Cancel button (primary running indicator)
+        var stopBtn = doc.querySelector('[data-tooltip-id="stop-button-tooltip"]');
+        if (stopBtn) {
+            var stopRect = stopBtn.getBoundingClientRect();
+            var stopStyle = window.getComputedStyle(stopBtn);
+            if (stopRect.width > 0 && stopRect.height > 0 && 
+                stopStyle.display !== 'none' && stopStyle.visibility !== 'hidden') {
+                hasStopButton = true;
+                debugInfo += ',stop';
+            }
+        }
+        
+        // CHECK 2: Send button visibility (primary completion indicator)
         var sendBtn = doc.querySelector('[data-tooltip-id="input-send-button-send-tooltip"]');
         if (sendBtn) {
-            // Check if actually visible (has size and not hidden)
             var rect = sendBtn.getBoundingClientRect();
             var style = window.getComputedStyle(sendBtn);
             var isVisible = rect.width > 0 && rect.height > 0 && 
@@ -850,12 +1165,11 @@ export class BatchPromptService {
                             style.opacity !== '0';
             if (isVisible) {
                 hasSendButtonVisible = true;
-                var isDisabled = sendBtn.disabled || sendBtn.getAttribute('disabled') !== null;
-                debugInfo += ',send-visible' + (isDisabled ? '-disabled' : '-enabled');
+                debugInfo += ',send';
             }
         }
         
-        // Check for retry button
+        // CHECK 3: Retry button (interruption indicator)
         var allButtons = doc.querySelectorAll('button');
         for (var i = 0; i < allButtons.length; i++) {
             var btn = allButtons[i];
@@ -870,12 +1184,12 @@ export class BatchPromptService {
         }
     }
     
-    // COMPLETION LOGIC:
-    // - Retry button visible → task INTERRUPTED (let auto-retry handle, takes priority)
-    // - Send button visible (no retry) → task COMPLETE
-    // - Neither → agent is RUNNING (Send button replaced by Stop/Cancel)
-    
-    return { hasSendButtonVisible: hasSendButtonVisible, hasRetryButton: hasRetryButton, debug: debugInfo };
+    return { 
+        hasSendButtonVisible: hasSendButtonVisible, 
+        hasRetryButton: hasRetryButton, 
+        hasStopButton: hasStopButton,
+        debug: debugInfo 
+    };
 })();
 `;
             const result = await this.cdpHandler.evaluate(connId, script);
@@ -885,12 +1199,13 @@ export class BatchPromptService {
                 return {
                     hasSendButtonVisible: data.hasSendButtonVisible === true,
                     hasRetryButton: data.hasRetryButton === true,
+                    hasStopButton: data.hasStopButton === true,
                     debug: data.debug
                 };
             }
-            return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'no data' };
+            return { hasSendButtonVisible: false, hasRetryButton: false, hasStopButton: false, debug: 'no data' };
         } catch (error) {
-            return { hasSendButtonVisible: false, hasRetryButton: false, debug: 'error: ' + error };
+            return { hasSendButtonVisible: false, hasRetryButton: false, hasStopButton: false, debug: 'error: ' + error };
         }
     }
 
@@ -997,6 +1312,7 @@ export class BatchPromptService {
 
     /**
      * Create new session with multiple fallback strategies
+     * Enhanced with post-click stabilization to prevent DOM race conditions
      */
     private async createNewSession(): Promise<boolean> {
         const connId = this.getConnectionId();
@@ -1100,15 +1416,68 @@ export class BatchPromptService {
 })();
 `;
             const searchResult = await this.cdpHandler.evaluate(connId, searchScript);
-            if (searchResult?.result?.value?.success) {
-                this.log(`New session created via ${searchResult.result.value.method}`, 'success');
-                return true;
+            if (!searchResult?.result?.value?.success) {
+                const searched = searchResult?.result?.value?.searched || 0;
+                this.log(`New session button not found (searched ${searched} docs)`, 'error');
+                return false;
             }
 
-            // Log what we searched for debugging
-            const searched = searchResult?.result?.value?.searched || 0;
-            this.log(`New session button not found (searched ${searched} docs)`, 'error');
-            return false;
+            this.log(`New session clicked via ${searchResult.result.value.method}`, 'info');
+
+            // POST-CLICK STABILIZATION: Extended wait for DOM to settle after new session click (v0.4.5)
+            // This prevents race conditions where we try to fill prompt before UI is ready
+            await this.sleep(3000);
+
+            // Verify chat input is ready and empty (with extended retry - v0.4.5)
+            const maxRetries = 5; // Extended from 3 for slower UI mounts
+            for (let retry = 0; retry < maxRetries; retry++) {
+                const verifyScript = `
+(function() {
+    function getAllDocs() {
+        var docs = [document];
+        try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+                try {
+                    var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                    if (iframeDoc && iframeDoc.body) docs.push(iframeDoc);
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return docs;
+    }
+
+    var docs = getAllDocs();
+    for (var d = 0; d < docs.length; d++) {
+        var input = docs[d].querySelector('[contenteditable="true"][role="textbox"]');
+        if (input) {
+            var rect = input.getBoundingClientRect();
+            var style = window.getComputedStyle(input);
+            var isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none';
+            var isEmpty = !input.textContent || input.textContent.trim() === '';
+            return { ready: isVisible, empty: isEmpty };
+        }
+    }
+    return { ready: false, empty: false };
+})();
+`;
+                const verifyResult = await this.cdpHandler.evaluate(connId, verifyScript);
+                const verifyData = verifyResult?.result?.value;
+
+                if (verifyData?.ready && verifyData?.empty) {
+                    this.log('New session ready', 'success');
+                    return true;
+                }
+
+                // Input not ready yet, wait and retry
+                if (retry < maxRetries - 1) {
+                    await this.sleep(1500); // Extended from 1000ms for slower mounts
+                }
+            }
+
+            // Input verification failed but button was clicked - proceed anyway
+            this.log('New session created (input verification skipped)', 'warning');
+            return true;
         } catch (error: any) {
             this.log(`Create new session error: ${error.message}`, 'error');
             return false;

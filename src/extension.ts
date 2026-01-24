@@ -23,7 +23,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(statusBarManager);
 
     // Register side panel with QuotaManager
-    sidePanelProvider = new SidePanelProvider(context.extensionUri, quotaManager);
+    sidePanelProvider = new SidePanelProvider(context.extensionUri, quotaManager, context);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             SidePanelProvider.viewType,

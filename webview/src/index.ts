@@ -26,7 +26,8 @@ import {
     updateBatchStatus,
     updateBatchProgress,
     appendBatchLog,
-    updateCDPStatus
+    updateCDPStatus,
+    restoreBatchState
 } from './panels/MainPanel';
 
 // Declare vscode API type
@@ -124,6 +125,11 @@ interface CDPStatusMessage {
     data: { connected: boolean };
 }
 
+interface RestoreBatchStateMessage {
+    type: 'restoreBatchState';
+    data: { prompt: string; repeatCount: number };
+}
+
 type ExtensionMessage =
     | AutoRetryStatusMessage
     | AutoRetryLogMessage
@@ -133,7 +139,8 @@ type ExtensionMessage =
     | BatchStatusMessage
     | BatchProgressMessage
     | BatchLogMessage
-    | CDPStatusMessage;
+    | CDPStatusMessage
+    | RestoreBatchStateMessage;
 
 window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
     const message = event.data;
@@ -165,6 +172,9 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
             break;
         case 'cdpStatus':
             updateCDPStatus(message.data.connected);
+            break;
+        case 'restoreBatchState':
+            restoreBatchState(message.data.prompt, message.data.repeatCount);
             break;
     }
 });

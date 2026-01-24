@@ -101,6 +101,41 @@ After setup, use the `ragy` command to start your IDE with CDP:
 ragy
 ```
 
+## Batch Automation
+
+Run prompts automatically in a loop for complex, iterative tasks.
+
+### Iterative Loop Pattern
+
+The batch automation feature is designed for tasks that may not complete in a single run due to context limits. Use this pattern:
+
+```text
+1. Check pending.md for unfinished items
+2. Complete tasks A, B, C, D, E in sequence
+3. Mark completed tasks, save incomplete ones
+4. Repeat until pending.md is empty
+```
+
+**Why this works:**
+- Each batch run starts fresh with full context
+- Tasks track their own progress in files (e.g., `pending.md`)
+- Incomplete work is automatically picked up in the next iteration
+- Complex multi-step workflows complete reliably over multiple runs
+
+### Settings
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Repeat Count | 5 | Number of times to run the prompt |
+| Timeout | 5 hours | Maximum wait time per run |
+
+### Tips
+
+- ✅ Design prompts that check and update state files
+- ✅ Use meaningful progress markers your prompt can detect
+- ✅ Set repeat count high enough to allow completion
+- ❌ Don't rely on in-memory state between runs
+
 ## License
 
 MIT © [paean-ai](https://github.com/paean-ai)

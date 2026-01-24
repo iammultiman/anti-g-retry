@@ -194,7 +194,7 @@ export class MainPanel {
           <!-- Batch Configuration -->
           <div class="batch-config">
             <label class="input-label">Prompt Template</label>
-            <textarea id="batch-prompt" class="batch-textarea" rows="4" placeholder="Enter your prompt here..."></textarea>
+            <textarea id="batch-prompt" class="batch-textarea" rows="4" placeholder="Example: Iterative Loop Task&#10;1. Check pending.md for unfinished items&#10;2. Complete tasks A, B, C, D, E in sequence&#10;3. Mark completed tasks, save incomplete ones&#10;4. Repeat until pending.md is empty"></textarea>
           </div>
 
           <!-- Repeat Count + Status Row (Merged) -->
@@ -612,5 +612,18 @@ export function updateCDPStatus(connected: boolean): void {
       notice.style.display = 'block';
       cdpContent.style.display = 'none';
     }
+  }
+}
+
+// Restore batch state from extension persistence
+export function restoreBatchState(prompt: string, repeatCount: number): void {
+  const promptEl = document.getElementById('batch-prompt') as HTMLTextAreaElement;
+  const countEl = document.getElementById('batch-repeat-count') as HTMLInputElement;
+
+  if (promptEl && prompt) {
+    promptEl.value = prompt;
+  }
+  if (countEl && repeatCount > 0) {
+    countEl.value = String(repeatCount);
   }
 }

@@ -7,18 +7,28 @@ import { AutoRetryService } from '../services/AutoRetryService';
 import { QuotaManager, QuotaState } from '../services/QuotaManager';
 import { BatchPromptService, BatchStatus } from '../services/BatchPromptService';
 
+// State keys for persistence
+const BATCH_STATE_KEY = 'agyRetry.batchState';
+
+interface BatchPersistentState {
+    prompt: string;
+    repeatCount: number;
+}
+
 export class SidePanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'agyRetry.mainPanel';
 
     private _view?: vscode.WebviewView;
     private readonly _extensionUri: vscode.Uri;
+    private readonly _context: vscode.ExtensionContext;
     private readonly _autoRetryService: AutoRetryService;
     private readonly _quotaManager: QuotaManager;
     private _quotaDisposable?: vscode.Disposable;
     private _batchPromptService?: BatchPromptService;
 
-    constructor(extensionUri: vscode.Uri, quotaManager: QuotaManager) {
+    constructor(extensionUri: vscode.Uri, quotaManager: QuotaManager, context: vscode.ExtensionContext) {
         this._extensionUri = extensionUri;
+        this._context = context;
         this._autoRetryService = new AutoRetryService();
         this._quotaManager = quotaManager;
     }
@@ -58,6 +68,7 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
                     this.sendQuotaUpdate(this._quotaManager.getState());
                     this.sendRetryStats();
                     this.checkAndSendCDPStatus();
+                    this.restoreBatchState(); // Restore saved batch state
                     break;
                 case 'refreshQuota':
                     await this._quotaManager.refresh();
@@ -282,6 +293,9 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             return;
         }
 
+        // Save batch state for persistence across tab switches
+        this.saveBatchState(prompt, repeatCount);
+
         // Initialize batch service if needed
         if (!this._batchPromptService) {
             this._batchPromptService = new BatchPromptService(this._autoRetryService['cdpHandler']);
@@ -397,6 +411,28 @@ export class SidePanelProvider implements vscode.WebviewViewProvider {
             this.sendBatchLog('Last error copied!', 'success');
         } else {
             this.sendBatchLog('No error to copy', 'info');
+        }
+    }
+
+    /**
+     * Save batch state for persistence across tab switches
+     */
+    private saveBatchState(prompt: string, repeatCount: number): void {
+        const state: BatchPersistentState = { prompt, repeatCount };
+        this._context.workspaceState.update(BATCH_STATE_KEY, state);
+    }
+
+    /**
+     * Restore batch state and send to webview
+     */
+    private restoreBatchState(): void {
+        if (!this._view) return;
+        const state = this._context.workspaceState.get<BatchPersistentState>(BATCH_STATE_KEY);
+        if (state && state.prompt) {
+            this._view.webview.postMessage({
+                type: 'restoreBatchState',
+                data: state
+            });
         }
     }
 
