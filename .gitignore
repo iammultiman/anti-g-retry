@@ -6,3 +6,4 @@ dist/
 *.log
 .env
 dev/
+AGENT.md

@@ -73,16 +73,15 @@ export class MainPanel {
         <!-- CDP Disconnected Notice -->
         <section class="cdp-notice" id="cdp-notice" style="display: none;">
           <div class="notice-content">
-            <span class="codicon codicon-info notice-icon"></span>
+            <span class="codicon codicon-rocket notice-icon"></span>
             <div class="notice-text">
-              <p class="notice-title">🚀 CDP Not Connected</p>
-              <p class="notice-desc">To enable auto-retry features, launch the IDE with CDP debugging enabled.</p>
-              <p class="notice-hint">Configure CDP port in settings, then restart your IDE with <code>--remote-debugging-port</code> flag.</p>
+              <p class="notice-title">CDP Not Connected</p>
+              <p class="notice-desc">Enable auto-retry by launching with CDP debugging.</p>
             </div>
           </div>
           <div class="notice-actions">
             <vscode-button id="btn-open-cdp-settings" appearance="secondary" class="notice-btn">
-              <span class="codicon codicon-settings-gear"></span>
+              <span class="codicon codicon-gear"></span>
               <span>Setup</span>
             </vscode-button>
           </div>
