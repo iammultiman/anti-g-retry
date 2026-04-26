@@ -128,8 +128,9 @@ The batch automation feature is designed for tasks that may not complete in a si
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| Repeat Count | 5 | Number of times to run the prompt |
-| Timeout | 5 hours | Maximum wait time per run |
+| Repeat Count | 5 | Number of times to run the prompt in batch mode |
+| Timeout | 5 hours | Maximum wait time per run in batch mode |
+| Cooldown | 5 seconds | Minimum time to wait after an auto-retry before attempting again |
 
 ### Tips
 
@@ -137,6 +138,17 @@ The batch automation feature is designed for tasks that may not complete in a si
 - ✅ Use meaningful progress markers your prompt can detect
 - ✅ Set repeat count high enough to allow completion
 - ❌ Don't rely on in-memory state between runs
+
+## CoolDown Period
+
+The **Cooldown Period** is a protective mechanism that defines the minimum waiting time (in seconds) between consecutive automated retry attempts. This ensures that the IDE is not overwhelmed with retry commands, and provides a buffer for the underlying AI language models to recover from rate limits or transient errors. You can adjust the default (5 seconds) directly in the extension's side panel settings to suit your workflow.
+
+## Security & Stability Improvements
+
+Recent updates have significantly enhanced the extension's stability and security:
+- **Hardened Executions**: Migrated all local process invocations to use direct execution bypassing the system shell, completely eliminating any risk of command injection paths.
+- **Robust Port Detection**: Integrated precise process ID matching to accurately locate the Antigravity Language Server across Windows and Unix.
+- **Zero XSS Vectors**: Webview panels utilize strict text interpolation instead of direct inner HTML to securely display logs and statuses.
 
 ## License
 

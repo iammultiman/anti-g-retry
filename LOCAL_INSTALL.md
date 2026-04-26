@@ -35,7 +35,7 @@ bun install -g @vscode/vsce
 ### 方法 1: 使用安装脚本（推荐）
 
 ```bash
-cd /Users/jianye/Desktop/workspaces/paean/agy-retry
+cd /Users/jianye/Desktop/workspaces/paean/anti-g-retry
 ./install.sh
 ```
 
@@ -49,7 +49,7 @@ cd /Users/jianye/Desktop/workspaces/paean/agy-retry
 
 ```bash
 # 1. 进入项目目录
-cd /Users/jianye/Desktop/workspaces/paean/agy-retry
+cd /Users/jianye/Desktop/workspaces/paean/anti-g-retry
 
 # 2. 安装依赖
 bun install
@@ -65,7 +65,7 @@ bun run package
 
 ### 方法 A: 从 .vsix 文件安装
 
-1. 运行 `bun run package` 后会生成 `agy-retry-*.vsix` 文件
+1. 运行 `bun run package` 后会生成 `anti-g-retry-*.vsix` 文件
 2. 在 VS Code/Cursor 中按 `Cmd+Shift+P` (macOS) 或 `Ctrl+Shift+P` (Windows/Linux)
 3. 输入 `Extensions: Install from VSIX...`
 4. 选择生成的 `.vsix` 文件
@@ -74,9 +74,9 @@ bun run package
 
 1. 在 VS Code/Cursor 中打开项目文件夹：
    ```bash
-   code /Users/jianye/Desktop/workspaces/paean/agy-retry
+   code /Users/jianye/Desktop/workspaces/paean/anti-g-retry
    # 或
-   cursor /Users/jianye/Desktop/workspaces/paean/agy-retry
+   cursor /Users/jianye/Desktop/workspaces/paean/anti-g-retry
    ```
 
 2. 按 `F5` 启动调试模式
@@ -141,7 +141,7 @@ bun install -g @vscode/vsce
 ## 项目结构
 
 ```
-agy-retry/
+anti-g-retry/
 ├── src/              # 扩展主代码
 │   ├── extension.ts  # 扩展入口
 │   ├── services/     # 服务层

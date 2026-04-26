@@ -17,9 +17,9 @@
 
 1. **在 VS Code 或 Cursor 中打开项目**:
    ```bash
-   code /Users/jianye/Desktop/workspaces/paean/agy-retry
+   code /Users/jianye/Desktop/workspaces/paean/anti-g-retry
    # 或
-   cursor /Users/jianye/Desktop/workspaces/paean/agy-retry
+   cursor /Users/jianye/Desktop/workspaces/paean/anti-g-retry
    ```
 
 2. **按 `F5` 启动调试模式**
@@ -36,13 +36,13 @@
 
 ```bash
 # 创建扩展目录（如果不存在）
-mkdir -p ~/.vscode/extensions/agy-retry-0.1.2
+mkdir -p ~/.vscode/extensions/anti-g-retry-0.5.0
 
 # 复制文件
-cp -r /Users/jianye/Desktop/workspaces/paean/agy-retry/* ~/.vscode/extensions/agy-retry-0.1.2/
+cp -r /Users/jianye/Desktop/workspaces/paean/anti-g-retry/* ~/.vscode/extensions/anti-g-retry-0.5.0/
 
 # 或者创建符号链接（推荐，便于开发）
-ln -s /Users/jianye/Desktop/workspaces/paean/agy-retry ~/.vscode/extensions/agy-retry-local
+ln -s /Users/jianye/Desktop/workspaces/paean/anti-g-retry ~/.vscode/extensions/anti-g-retry-local
 ```
 
 然后重启 VS Code/Cursor。
@@ -52,7 +52,7 @@ ln -s /Users/jianye/Desktop/workspaces/paean/agy-retry ~/.vscode/extensions/agy-
 如果需要打包为 .vsix 文件，可以尝试：
 
 ```bash
-cd /Users/jianye/Desktop/workspaces/paean/agy-retry
+cd /Users/jianye/Desktop/workspaces/paean/anti-g-retry
 export PATH="$HOME/.bun/bin:$PATH"
 
 # 确保构建完成
@@ -85,8 +85,8 @@ bun run watch
 
 ## 项目信息
 
-- **项目路径**: `/Users/jianye/Desktop/workspaces/paean/agy-retry`
-- **版本**: 0.1.2
+- **项目路径**: `/Users/jianye/Desktop/workspaces/paean/anti-g-retry`
+- **版本**: 0.5.0
 - **包管理器**: Bun 1.3.6
 - **构建工具**: Webpack 5.104.1
 
