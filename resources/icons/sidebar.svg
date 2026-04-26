@@ -1,10 +1,8 @@
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Retry Arrow -->
-  <path d="M12 4
-           A8 8 0 1 1 6 16"
-        stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
-  <!-- Arrow Head -->
-  <polygon points="6,14 6,18 3,16" fill="currentColor"/>
-  <!-- Center dot -->
-  <circle cx="12" cy="12" r="2" fill="currentColor"/>
+  <!-- Outer Retry Loop -->
+  <path d="M21 12A9 9 0 1 1 12 3c2.52 0 4.93 1 6.74 2.74L21 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21 3v5h-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Inner gravity core (diamond) -->
+  <path d="M12 9l3 3-3 3-3-3z" fill="currentColor"/>
 </svg>
