@@ -23,12 +23,12 @@ Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting
 
 When Antigravity runs without CDP support, the extension shows a helpful message:
 
-> 🚀 **No CDP? Try `ragy`!**
-> Run `ragy` in terminal to launch Agy with CDP enabled.
+> 🚀 **No CDP? Try `antig`!**
+> Run `antig` in terminal to launch Agy with CDP enabled.
 > If it works, retry lives on. If not, maybe Google fixed it. Happy vibe coding! ✨
 
 This may indicate:
-- Antigravity was not launched with CDP flags → use `ragy` command
+- Antigravity was not launched with CDP flags → use `antig` command
 - Google has officially fixed the retry issue → the plugin's retry mission is complete! 🎉
 
 ## Quick Start
@@ -97,10 +97,10 @@ Rich visualization with recovery times and stats:
 
 ## Launch Command
 
-After setup, use the `ragy` command to start your IDE with CDP:
+After setup, use the `antig` command to start your IDE with CDP:
 
 ```bash
-ragy
+antig
 ```
 
 ## Batch Automation
