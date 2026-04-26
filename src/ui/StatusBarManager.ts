@@ -31,7 +31,7 @@ export class StatusBarManager {
 
     private updateDisplay(state: QuotaState): void {
         if (!state.connected || !state.keyModels) {
-            this.statusBarItem.text = '$(zap) Agy: Offline';
+            this.statusBarItem.text = '$(zap) Anti-g: Offline';
             this.statusBarItem.backgroundColor = undefined;
             return;
         }
@@ -51,7 +51,7 @@ export class StatusBarManager {
         }
 
         if (parts.length === 0) {
-            this.statusBarItem.text = '$(zap) Agy: Connected';
+            this.statusBarItem.text = '$(zap) Anti-g: Connected';
         } else {
             this.statusBarItem.text = `$(zap) ${parts.join(' | ')}`;
         }

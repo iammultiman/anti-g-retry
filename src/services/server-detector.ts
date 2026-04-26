@@ -263,55 +263,85 @@ async function detectWindows(): Promise<DetectionResult> {
         }
 
         for (const candidate of candidates) {
-            const port = await findWindowsListeningPort(candidate.pid, candidate.extensionPort);
-            if (port) {
-                return {
-                    success: true,
-                    server: {
-                        pid: candidate.pid,
-                        port,
-                        csrfToken: candidate.csrfToken,
-                        workspaceId: candidate.workspaceId,
-                    },
-                };
+            const ports = await findWindowsListeningPorts(candidate.pid);
+
+            // Try extensionPort first if it's in the list
+            if (candidate.extensionPort > 0 && ports.includes(candidate.extensionPort)) {
+                const isWorking = await testPort(candidate.extensionPort, candidate.csrfToken);
+                if (isWorking) {
+                    return {
+                        success: true,
+                        server: {
+                            pid: candidate.pid,
+                            port: candidate.extensionPort,
+                            csrfToken: candidate.csrfToken,
+                            workspaceId: candidate.workspaceId,
+                        },
+                    };
+                }
+            }
+
+            // Test all other ports
+            for (const port of ports) {
+                if (port === candidate.extensionPort) continue;
+                const isWorking = await testPort(port, candidate.csrfToken);
+                if (isWorking) {
+                    return {
+                        success: true,
+                        server: {
+                            pid: candidate.pid,
+                            port,
+                            csrfToken: candidate.csrfToken,
+                            workspaceId: candidate.workspaceId,
+                        },
+                    };
+                }
             }
         }
 
         return {
             success: false,
-            error: 'Language Server found but cannot find listening port',
-            tip: 'The server may still be starting up.',
+            error: 'Language Server found but no port responds to API',
+            tip: 'The server may still be starting up. Try again in a few seconds.',
         };
     } catch (error) {
         throw error;
     }
 }
 
-async function findWindowsListeningPort(pid: number, extensionPort: number): Promise<number | null> {
+async function findWindowsListeningPorts(pid: number): Promise<number[]> {
     try {
         const { stdout } = await execAsync(
-            `netstat -ano | findstr "${pid}" | findstr "LISTENING"`,
+            `netstat -ano | findstr "LISTENING"`,
             { timeout: 5000 }
         );
 
-        const portRegex = /(?:127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d+)\s+\S+\s+LISTENING/gi;
         const ports: number[] = [];
-        let match;
+        const lines = stdout.split('\n');
+        const pidStr = String(pid);
 
-        while ((match = portRegex.exec(stdout)) !== null) {
-            const port = parseInt(match[1], 10);
-            if (!ports.includes(port)) {
-                ports.push(port);
+        for (const line of lines) {
+            // netstat -ano format: proto  local_addr  foreign_addr  state  PID
+            // Match the PID at the end of the line (exact match, not substring)
+            const trimmed = line.trim();
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 5) continue;
+            if (parts[parts.length - 1] !== pidStr) continue;
+            if (!parts[3]?.includes('LISTENING')) continue;
+
+            const addrPort = parts[1];
+            const portMatch = addrPort.match(/:(\d+)$/);
+            if (portMatch) {
+                const port = parseInt(portMatch[1], 10);
+                if (!ports.includes(port)) {
+                    ports.push(port);
+                }
             }
         }
 
-        if (extensionPort > 0 && ports.includes(extensionPort)) {
-            return extensionPort;
-        }
-
-        return ports[0] || (extensionPort > 0 ? extensionPort : null);
+        return ports.sort((a, b) => a - b);
     } catch {
-        return extensionPort > 0 ? extensionPort : null;
+        return [];
     }
 }
 
