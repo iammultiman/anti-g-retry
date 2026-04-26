@@ -66,7 +66,8 @@
                 {
                     "type": "webview",
                     "id": "agyRetry.mainPanel",
-                    "name": "Auto Retry"
+                    "name": "Auto Retry",
+                    "icon": "resources/icons/sidebar.svg"
                 }
             ]
         },
