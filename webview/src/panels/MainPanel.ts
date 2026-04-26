@@ -61,7 +61,7 @@ export class MainPanel {
             <span class="codicon codicon-zap header-icon"></span>
             <div class="header-text">
               <h2>Anti-g Retry</h2>
-              <span class="subtitle">v0.4.0 • Antigravity Batch Automation</span>
+              <span class="subtitle">v0.5.0 • Antigravity Batch Automation</span>
             </div>
           </div>
           <div class="connection-badge" id="connection-badge">

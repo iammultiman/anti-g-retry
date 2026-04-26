@@ -112,9 +112,9 @@ export class Relauncher {
                 `Now: Cmd+Q → Open Terminal → Paste (Cmd+V) → Enter`
             );
         } else if (choice === '📁 Open Folder') {
-            const { exec } = require('child_process');
+            const { execFile } = require('child_process');
             const folderPath = path.join(os.homedir(), 'Applications');
-            exec(`open "${folderPath}"`);
+            execFile('open', [folderPath]);
             vscode.window.showInformationMessage(
                 `✅ Folder opened!\n\n` +
                 `Now: Cmd+Q → Double-click "${ideName}CDP" in the folder`
@@ -329,7 +329,7 @@ open -a "${appPath}" --args --remote-debugging-port=$PORT "$@"
     private modifyWindowsShortcut(): RelaunchStatus {
         const ideName = this.getIdeName();
         const port = this.cdpPort;
-        const { execSync } = require('child_process');
+        const { execFileSync } = require('child_process');
 
         const script = `
 $WshShell = New-Object -ComObject WScript.Shell
@@ -353,7 +353,7 @@ if ($modified) { "MODIFIED" } else { "READY" }
 `;
 
         try {
-            const result = execSync(`powershell -NoProfile -Command "${script.replace(/"/g, '\\"')}"`, {
+            const result = execFileSync('powershell', ['-NoProfile', '-Command', script], {
                 encoding: 'utf8',
                 timeout: 10000
             }).trim();
