@@ -1,5 +1,5 @@
 /**
- * Webview Entry Point - Agy Retry
+ * Webview Entry Point - Anti-g Retry
  * With Antigravity usage statistics integration
  */
 import {
@@ -21,6 +21,7 @@ import {
     updateAutoRetryStatus,
     appendAutoRetryLog,
     updateAutoStartCheckbox,
+    updateCooldownSetting,
     updateQuotaData,
     updateRetryStats,
     updateBatchStatus,
@@ -65,6 +66,11 @@ interface AutoRetryLogMessage {
 interface AutoStartSettingMessage {
     type: 'autoStartSetting';
     data: { enabled: boolean };
+}
+
+interface CooldownSettingMessage {
+    type: 'cooldownSetting';
+    data: { seconds: number };
 }
 
 interface QuotaUpdateMessage {
@@ -134,6 +140,7 @@ type ExtensionMessage =
     | AutoRetryStatusMessage
     | AutoRetryLogMessage
     | AutoStartSettingMessage
+    | CooldownSettingMessage
     | QuotaUpdateMessage
     | RetryStatsMessage
     | BatchStatusMessage
@@ -154,6 +161,9 @@ window.addEventListener('message', (event: MessageEvent<ExtensionMessage>) => {
             break;
         case 'autoStartSetting':
             updateAutoStartCheckbox(message.data.enabled);
+            break;
+        case 'cooldownSetting':
+            updateCooldownSetting(message.data.seconds);
             break;
         case 'quotaUpdate':
             updateQuotaData(message.data);

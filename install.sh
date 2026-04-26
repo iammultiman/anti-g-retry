@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Agy Retry 本地安装脚本
+# Anti-g Retry 本地安装脚本
 # 用于从源码构建和安装 VS Code/Cursor 扩展
 
 set -e
 
-echo "🚀 Agy Retry 本地安装脚本"
+echo "🚀 Anti-g Retry 本地安装脚本"
 echo "=========================="
 echo ""
 

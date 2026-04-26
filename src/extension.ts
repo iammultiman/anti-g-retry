@@ -1,5 +1,5 @@
 /**
- * Agy Retry - VS Code Extension
+ * Anti-g Retry - VS Code Extension
  * Auto-retry for AI coding agents. Zero-babysitting automation.
  * With Antigravity usage statistics integration.
  */
@@ -13,7 +13,7 @@ let statusBarManager: StatusBarManager | undefined;
 let quotaManager: QuotaManager | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    console.log('Agy Retry is activating...');
+    console.log('Anti-g Retry is activating...');
 
     // Initialize QuotaManager singleton
     quotaManager = QuotaManager.getInstance();
@@ -59,18 +59,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Delay auto-start to let UI initialize
         setTimeout(async () => {
             try {
-                console.log('[Agy Retry] Auto-starting...');
+                console.log('[Anti-g Retry] Auto-starting...');
                 await sidePanelProvider?.tryAutoStartRetry();
             } catch (error) {
-                console.error('[Agy Retry] Auto-start failed:', error);
+                console.error('[Anti-g Retry] Auto-start failed:', error);
             }
         }, 3000);
     }
 
-    console.log('Agy Retry activated!');
+    console.log('Anti-g Retry activated!');
 }
 
 export function deactivate(): void {
     quotaManager?.stop();
-    console.log('Agy Retry deactivated');
+    console.log('Anti-g Retry deactivated');
 }

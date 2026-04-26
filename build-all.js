@@ -1,7 +1,7 @@
 const webpack = require('webpack');
 const config = require('./webpack.config.js');
 
-webpack(config, (err, stats) => {
+const compiler = webpack(config, (err, stats) => {
   if (err) {
     console.error(err);
     process.exit(1);
@@ -11,4 +11,12 @@ webpack(config, (err, stats) => {
     process.exit(1);
   }
   console.log(stats.toString({ colors: true }));
+  
+  compiler.close((closeErr) => {
+    if (closeErr) {
+        console.error(closeErr);
+        process.exit(1);
+    }
+    process.exit(0);
+  });
 });

@@ -19,7 +19,7 @@ export class StatusBarManager {
         );
 
         this.statusBarItem.command = 'agyRetry.openPanel';
-        this.statusBarItem.tooltip = 'Click to open Agy Retry panel';
+        this.statusBarItem.tooltip = 'Click to open Anti-g Retry panel';
 
         // Subscribe to quota updates
         this.disposable = quotaManager.onUpdate((state) => {
@@ -86,7 +86,7 @@ export class StatusBarManager {
         if (state.lastUpdate) {
             tooltipLines.push(`Last updated: ${state.lastUpdate.toLocaleTimeString()}`);
         }
-        tooltipLines.push('Click to open Agy Retry panel');
+        tooltipLines.push('Click to open Anti-g Retry panel');
 
         this.statusBarItem.tooltip = tooltipLines.join('\n');
     }

@@ -1,12 +1,12 @@
-# Agy Retry 本地安装指南
+# Anti-g Retry 本地安装指南
 
-本指南将帮助你从源码构建和安装 Agy Retry 扩展。
+本指南将帮助你从源码构建和安装 Anti-g Retry 扩展。
 
 ## 前置要求
 
 ### 1. 安装 Bun
 
-Agy Retry 使用 Bun 作为包管理器。如果还没有安装，请先安装：
+Anti-g Retry 使用 Bun 作为包管理器。如果还没有安装，请先安装：
 
 **macOS/Linux:**
 ```bash
@@ -87,7 +87,7 @@ bun run package
 
 安装完成后：
 
-1. 点击侧边栏中的 **Agy Retry** 图标
+1. 点击侧边栏中的 **Anti-g Retry** 图标
 2. 点击 **Start** 按钮
 3. 按照 CDP 设置提示操作
 4. 重启 IDE
@@ -154,6 +154,6 @@ agy-retry/
 
 ## 相关链接
 
-- GitHub: https://github.com/paean-ai/agy-retry
+- GitHub: https://github.com/iammultiman/anti-g-retry
 - Bun 文档: https://bun.sh/docs
 - VS Code 扩展开发: https://code.visualstudio.com/api

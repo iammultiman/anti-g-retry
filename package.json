@@ -1,20 +1,20 @@
 {
-    "name": "agy-retry",
-    "displayName": "Agy Retry",
-    "description": "Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting automation with usage statistics.",
+    "name": "anti-g-retry",
+    "displayName": "Anti-g Retry",
+    "description": "Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Forked from agy-retry. Modifications and improvements by Matthew Anorkplim Loh.",
     "version": "0.4.11",
-    "publisher": "paean-ai",
-    "author": "paean-ai",
+    "publisher": "iammultiman",
+    "author": "Matthew Anorkplim Loh",
     "icon": "resources/icons/icon.png",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/paean-ai/agy-retry"
+        "url": "https://github.com/iammultiman/anti-g-retry"
     },
     "bugs": {
-        "url": "https://github.com/paean-ai/agy-retry/issues"
+        "url": "https://github.com/iammultiman/anti-g-retry/issues"
     },
-    "homepage": "https://github.com/paean-ai/agy-retry#readme",
+    "homepage": "https://github.com/iammultiman/anti-g-retry#readme",
     "engines": {
         "vscode": "^1.85.0"
     },
@@ -38,17 +38,17 @@
         "commands": [
             {
                 "command": "agyRetry.start",
-                "title": "Agy Retry: Start Auto Retry",
+                "title": "Anti-g Retry: Start Auto Retry",
                 "icon": "$(play)"
             },
             {
                 "command": "agyRetry.stop",
-                "title": "Agy Retry: Stop Auto Retry",
+                "title": "Anti-g Retry: Stop Auto Retry",
                 "icon": "$(debug-stop)"
             },
             {
                 "command": "agyRetry.openPanel",
-                "title": "Agy Retry: Open Panel",
+                "title": "Anti-g Retry: Open Panel",
                 "icon": "$(window)"
             }
         ],
@@ -56,7 +56,7 @@
             "activitybar": [
                 {
                     "id": "agy-retry",
-                    "title": "Agy Retry",
+                    "title": "Anti-g Retry",
                     "icon": "resources/icons/sidebar.svg"
                 }
             ]
@@ -71,7 +71,7 @@
             ]
         },
         "configuration": {
-            "title": "Agy Retry",
+            "title": "Anti-g Retry",
             "properties": {
                 "agyRetry.enabled": {
                     "type": "boolean",

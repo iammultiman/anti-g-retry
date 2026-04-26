@@ -1,5 +1,5 @@
 /**
- * Main Panel Component - Agy Retry
+ * Main Panel Component - Anti-g Retry
  * Modern premium UI with usage statistics and retry tracking
  */
 import { vscode } from '../index';
@@ -60,7 +60,7 @@ export class MainPanel {
           <div class="header-content">
             <span class="codicon codicon-zap header-icon"></span>
             <div class="header-text">
-              <h2>Agy Retry</h2>
+              <h2>Anti-g Retry</h2>
               <span class="subtitle">v0.4.0 • Antigravity Batch Automation</span>
             </div>
           </div>
@@ -164,8 +164,14 @@ export class MainPanel {
             </span>
           </div>
           <!-- Controls Row -->
-          <div class="controls-row-compact">
-            <vscode-checkbox id="chk-auto-start" class="compact-checkbox">Auto-start</vscode-checkbox>
+          <div class="controls-row-compact" style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <vscode-checkbox id="chk-auto-start" class="compact-checkbox">Auto-start</vscode-checkbox>
+              <div class="cooldown-input-wrapper" style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" title="Cooldown in seconds before retrying">
+                <span class="codicon codicon-clock" style="font-size: 14px; opacity: 0.8;"></span>
+                <input type="number" id="inp-cooldown" class="batch-input-small" min="1" max="60" value="5" style="width: 60px;" />
+              </div>
+            </div>
             <vscode-button id="btn-toggle-auto-retry" appearance="primary" class="retry-btn-compact">
               <span class="codicon codicon-play" id="btn-toggle-icon"></span>
               <span id="btn-toggle-text">Start</span>
@@ -290,6 +296,19 @@ export class MainPanel {
       vscode.postMessage({ type: 'setAutoStart', data: { enabled: checkbox.checked } });
     });
 
+    // Cooldown input
+    document.getElementById('inp-cooldown')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      const val = parseInt(input.value, 10);
+      if (!isNaN(val) && val >= 1 && val <= 60) {
+        vscode.postMessage({ type: 'setCooldown', data: { seconds: val } });
+      } else {
+        if (val < 1) input.value = '1';
+        if (val > 60) input.value = '60';
+        vscode.postMessage({ type: 'setCooldown', data: { seconds: parseInt(input.value, 10) } });
+      }
+    });
+
     // Refresh quota button
     document.getElementById('btn-refresh-quota')?.addEventListener('click', () => {
       vscode.postMessage({ type: 'refreshQuota' });
@@ -404,6 +423,13 @@ export function updateAutoStartCheckbox(enabled: boolean): void {
   const checkbox = document.getElementById('chk-auto-start') as HTMLInputElement;
   if (checkbox) {
     checkbox.checked = enabled;
+  }
+}
+
+export function updateCooldownSetting(seconds: number): void {
+  const input = document.getElementById('inp-cooldown') as HTMLInputElement;
+  if (input) {
+    input.value = String(seconds);
   }
 }
 

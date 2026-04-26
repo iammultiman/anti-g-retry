@@ -1,4 +1,4 @@
-# ✅ Agy Retry 本地安装完成
+# ✅ Anti-g Retry 本地安装完成
 
 ## 安装状态
 
@@ -27,7 +27,7 @@
    - 在新窗口中，扩展已经安装并可以使用
 
 3. **在新窗口中测试扩展**:
-   - 点击侧边栏的 **Agy Retry** 图标
+   - 点击侧边栏的 **Anti-g Retry** 图标
    - 点击 **Start** 按钮开始使用
 
 ### 方法 2: 手动创建符号链接（开发用）
@@ -66,7 +66,7 @@ bunx vsce package --no-yarn --allow-missing-repository
 
 安装完成后：
 
-1. 点击侧边栏中的 **Agy Retry** 图标
+1. 点击侧边栏中的 **Anti-g Retry** 图标
 2. 点击 **Start** 按钮
 3. 按照 CDP 设置提示操作
 4. 重启 IDE

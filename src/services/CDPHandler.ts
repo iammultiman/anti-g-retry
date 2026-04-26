@@ -16,6 +16,7 @@ const PORT_RANGE = 3; // 31902-31908
 export interface CDPConfig {
     pollInterval?: number;
     bannedCommands?: string[];
+    cooldownSeconds?: number;
 }
 
 export interface CDPStats {
@@ -542,7 +543,8 @@ export class CDPHandler {
       'mkfs.',
       '> /dev/sda',
       'chmod -R 777 /'
-    ]
+    ],
+    cooldownSeconds: 5
   };
 
   let isProcessing = false;
@@ -629,11 +631,29 @@ export class CDPHandler {
         continue;
       }
 
-      // Click the button
-      btn.click();
-      stats.clicks++;
-
-      console.log('[Auto Retry] ✅ Clicked Retry! (Total: ' + stats.clicks + ')');
+      // Check if we are already waiting to click this button
+      if (btn.dataset.retryPending === 'true') continue;
+      
+      // Click the button with cooldown
+      const waitTime = (config.cooldownSeconds || 0) * 1000;
+      if (waitTime > 0) {
+        btn.dataset.retryPending = 'true';
+        btn.dataset.originalText = btn.textContent || '';
+        console.log('[Auto Retry] Waiting ' + config.cooldownSeconds + 's before clicking...');
+        
+        setTimeout(() => {
+          if (document.contains(btn) && isErrorContext(btn)) {
+            btn.click();
+            stats.clicks++;
+            console.log('[Auto Retry] ✅ Clicked Retry! (Total: ' + stats.clicks + ')');
+          }
+          btn.dataset.retryPending = 'false';
+        }, waitTime);
+      } else {
+        btn.click();
+        stats.clicks++;
+        console.log('[Auto Retry] ✅ Clicked Retry! (Total: ' + stats.clicks + ')');
+      }
     }
   }
 

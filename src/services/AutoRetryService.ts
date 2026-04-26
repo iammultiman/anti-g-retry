@@ -110,7 +110,8 @@ export class AutoRetryService {
         this.config = this.getConfig();
         const connected = await this.cdpHandler.start({
             pollInterval: this.config.intervalSeconds * 1000,
-            bannedCommands: this.getDefaultBannedCommands()
+            bannedCommands: this.getDefaultBannedCommands(),
+            cooldownSeconds: this.config.cooldownSeconds
         });
 
         if (!connected) {
@@ -130,7 +131,8 @@ export class AutoRetryService {
             // Reconnect/maintain CDP connections
             await this.cdpHandler.start({
                 pollInterval: this.config.intervalSeconds * 1000,
-                bannedCommands: this.getDefaultBannedCommands()
+                bannedCommands: this.getDefaultBannedCommands(),
+                cooldownSeconds: this.config.cooldownSeconds
             });
 
             // Poll stats to detect new retry clicks

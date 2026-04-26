@@ -1,10 +1,12 @@
-# Agy Retry
+# Anti-g Retry
 
 Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting automation.
 
-[![OpenVSX](https://img.shields.io/open-vsx/v/paean-ai/agy-retry)](https://open-vsx.org/extension/paean-ai/agy-retry)
+> **Note**: This is a fork of [agy-retry](https://github.com/paean-ai/agy-retry). Modifications and improvements were done by Matthew Anorkplim Loh.
+
+[![OpenVSX](https://img.shields.io/open-vsx/v/iammultiman/anti-g-retry)](https://open-vsx.org/extension/iammultiman/anti-g-retry)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-paean--ai%2Fagy--retry-blue?logo=github)](https://github.com/paean-ai/agy-retry)
+[![GitHub](https://img.shields.io/badge/GitHub-iammultiman%2Fanti--g--retry-blue?logo=github)](https://github.com/iammultiman/anti-g-retry)
 
 ## Features
 
@@ -32,7 +34,7 @@ This may indicate:
 ## Quick Start
 
 1. Install the extension
-2. Click the **Agy Retry** icon in sidebar
+2. Click the **Anti-g Retry** icon in sidebar
 3. Click **Start** → follow CDP setup prompts
 4. After IDE restart, click **Start** again
 5. ✅ Auto-retry is active!
@@ -40,7 +42,7 @@ This may indicate:
 ## How It Works
 
 ```
-IDE (with CDP flag) ←→ WebSocket ←→ Agy Retry
+IDE (with CDP flag) ←→ WebSocket ←→ Anti-g Retry
                                       ↓
                               Monitor UI → Click "Retry"
 ```
@@ -73,7 +75,7 @@ Rich visualization with recovery times and stats:
 
 ```text
 +------------------------------+
-|  ⚡ Agy Retry                |
+|  ⚡ Anti-g Retry              |
 |  Zero-babysitting auto       |
 +------------------------------+
 |                              |
@@ -138,4 +140,4 @@ The batch automation feature is designed for tasks that may not complete in a si
 
 ## License
 
-MIT © [paean-ai](https://github.com/paean-ai)
+MIT © [iammultiman](https://github.com/iammultiman)
