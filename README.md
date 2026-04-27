@@ -8,6 +8,24 @@ Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Zero-babysitting
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-iammultiman%2Fanti--g--retry-blue?logo=github)](https://github.com/iammultiman/anti-g-retry)
 
+## Why this fork?
+
+Compared to the original [paean-ai/agy-retry](https://github.com/paean-ai/agy-retry), this fork (**iammultiman/anti-g-retry**) introduces several critical fixes, security enhancements, and professional refinements:
+
+### 🛡️ Security Hardening
+- **Shell-Safe Executions**: Migrated all system calls to use `execFile` and `execFileSync`, bypassing the system shell entirely to prevent potential command injection vulnerabilities from malicious filesystem paths.
+- **XSS Prevention**: Hardened the Webview interface by using strict `textContent` for all dynamic log and status rendering, ensuring that AI-generated content cannot execute malicious scripts.
+
+### 🛠️ Robust Fixes
+- **Reliable Windows Detection**: Resolved the common "Offline" status issue by implementing exact PID matching and active port validation. It now correctly identifies the Language Server API instead of blindly returning the first open port.
+- **Smarter Port Scanning**: Added logic to validate connectivity across a range of potential ports, ensuring reliable detection even when multiple IDE instances are running.
+
+### ✨ Professional Refinements
+- **`antig` CLI Command**: Rebranded and streamlined the launch experience with the `antig` command for easy CDP activation.
+- **Configurable Cooldown**: Introduced a user-defined `Cooldown Period` to prevent rapid-fire retries and provide a smoother automation experience.
+- **Premium UI (v0.5.0)**: Completely redesigned the side panel with a modern, minimalist aesthetic, featuring model usage rings and integrated batch statistics.
+- **Optimized Packaging**: Excludes all development artifacts and scratch scripts from the final VSIX, resulting in a leaner, production-ready build.
+
 ## Features
 
 - 🔄 **Auto-click Retry** when AI agents encounter errors
