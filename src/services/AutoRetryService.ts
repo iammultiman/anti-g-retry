@@ -24,7 +24,8 @@ export class AutoRetryService {
     private logCallback?: AutoRetryLogCallback;
     private retryCallback?: () => void;
     private lastKnownClicks: number = 0;
-    private pollTimer?: ReturnType<typeof setInterval>;
+    private pollTimer?: ReturnType<typeof setTimeout>;
+    private isPolling = false;
     private config: AutoRetryConfig;
 
     constructor() {
@@ -125,9 +126,19 @@ export class AutoRetryService {
         this.log(`Connected to ${this.cdpHandler.getConnectionCount()} page(s)`, 'info');
 
         // Start polling to maintain connection and check for retry clicks
-        this.pollTimer = setInterval(async () => {
-            if (!this.isRunning) return;
+        this.startPollLoop();
 
+        return true;
+    }
+
+    /**
+     * Recursive async polling loop that waits for completion before scheduling next
+     */
+    private async startPollLoop(): Promise<void> {
+        if (!this.isRunning || this.isPolling) return;
+        this.isPolling = true;
+
+        try {
             // Reconnect/maintain CDP connections
             await this.cdpHandler.start({
                 pollInterval: this.config.intervalSeconds * 1000,
@@ -137,9 +148,14 @@ export class AutoRetryService {
 
             // Poll stats to detect new retry clicks
             await this.checkForNewRetries();
-        }, 3000);
-
-        return true;
+        } catch (error) {
+            console.error('[AutoRetry] Polling error:', error);
+        } finally {
+            this.isPolling = false;
+            if (this.isRunning) {
+                this.pollTimer = setTimeout(() => this.startPollLoop(), 3000);
+            }
+        }
     }
 
     /**
@@ -173,7 +189,7 @@ export class AutoRetryService {
         this.isRunning = false;
 
         if (this.pollTimer) {
-            clearInterval(this.pollTimer);
+            clearTimeout(this.pollTimer);
             this.pollTimer = undefined;
         }
 

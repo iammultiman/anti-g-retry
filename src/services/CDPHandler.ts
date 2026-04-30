@@ -80,6 +80,17 @@ export class CDPHandler {
     }
 
     /**
+     * Helper to gracefully close and remove a connection
+     */
+    private closeConnection(id: string): void {
+        const conn = this.connections.get(id);
+        if (conn) {
+            try { conn.ws.close(); } catch (e) {}
+            this.connections.delete(id);
+        }
+    }
+
+    /**
      * Log message to callback
      */
     private log(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info'): void {
@@ -137,13 +148,7 @@ export class CDPHandler {
         this.isEnabled = true;
         this.log(`Scanning ports ${this.basePort - this.portRange} to ${this.basePort + this.portRange}...`, 'info');
 
-        // Clean up dead connections first
-        for (const [id, conn] of this.connections) {
-            if (conn.ws.readyState !== 1) { // 1 = OPEN
-                this.connections.delete(id);
-            }
-        }
-
+        const validPageIds = new Set<string>();
         let newConnections = 0;
 
         for (let port = this.basePort - this.portRange; port <= this.basePort + this.portRange; port++) {
@@ -151,16 +156,30 @@ export class CDPHandler {
                 const pages = await this.getPages(port);
                 for (const page of pages) {
                     const id = `${port}:${page.id}`;
+                    validPageIds.add(id);
                     if (!this.connections.has(id)) {
                         const success = await this.connect(id, page.webSocketDebuggerUrl);
                         if (success) {
                             newConnections++;
                         }
                     }
-                    await this.inject(id, config);
+                    // Ping health check before inject
+                    try {
+                        await this.evaluate(id, '1');
+                        await this.inject(id, config);
+                    } catch (e) {
+                        // Connection evicted
+                    }
                 }
             } catch (e) {
                 // Port not available
+            }
+        }
+
+        // Clean up orphaned or dead connections
+        for (const [id, conn] of this.connections) {
+            if (!validPageIds.has(id) || conn.ws.readyState !== 1) {
+                this.closeConnection(id);
             }
         }
 
@@ -263,6 +282,13 @@ export class CDPHandler {
         if (!conn) return;
 
         try {
+            if (conn.injected) {
+                const isAlive = await this.evaluate(id, 'typeof window.__autoAcceptGetStats === "function"');
+                if (isAlive?.result?.value === false) {
+                    conn.injected = false;
+                }
+            }
+
             if (!conn.injected) {
                 // Get the inject script
                 const script = this.getInjectScript();
@@ -285,13 +311,19 @@ export class CDPHandler {
      */
     public async evaluate(id: string, expression: string): Promise<any> {
         const conn = this.connections.get(id);
-        if (!conn || conn.ws.readyState !== WebSocket.OPEN) return;
+        if (!conn || conn.ws.readyState !== 1) return; // 1 = OPEN
 
         return new Promise((resolve, reject) => {
             const currentId = this.msgId++;
-            const timeout = setTimeout(() => reject(new Error('CDP Timeout')), 5000);
+            let onMessage: (data: any) => void;
 
-            const onMessage = (data: any) => {
+            const timeout = setTimeout(() => {
+                if (onMessage && conn.ws) conn.ws.off('message', onMessage);
+                this.closeConnection(id);
+                reject(new Error('CDP Timeout'));
+            }, 5000);
+
+            onMessage = (data: any) => {
                 try {
                     const msg = JSON.parse(data.toString());
                     if (msg.id === currentId) {
@@ -305,16 +337,23 @@ export class CDPHandler {
             };
 
             conn.ws.on('message', onMessage);
-            conn.ws.send(JSON.stringify({
-                id: currentId,
-                method: 'Runtime.evaluate',
-                params: {
-                    expression,
-                    userGesture: true,
-                    awaitPromise: true,
-                    returnByValue: true  // Ensure objects are serialized
-                }
-            }));
+            try {
+                conn.ws.send(JSON.stringify({
+                    id: currentId,
+                    method: 'Runtime.evaluate',
+                    params: {
+                        expression,
+                        userGesture: true,
+                        awaitPromise: true,
+                        returnByValue: true  // Ensure objects are serialized
+                    }
+                }));
+            } catch (sendErr) {
+                clearTimeout(timeout);
+                conn.ws.off('message', onMessage);
+                this.closeConnection(id);
+                reject(new Error('CDP Send failed'));
+            }
         });
     }
 
@@ -324,13 +363,19 @@ export class CDPHandler {
      */
     public async insertText(id: string, text: string): Promise<boolean> {
         const conn = this.connections.get(id);
-        if (!conn || conn.ws.readyState !== WebSocket.OPEN) return false;
+        if (!conn || conn.ws.readyState !== 1) return false; // 1 = OPEN
 
         return new Promise((resolve) => {
             const currentId = this.msgId++;
-            const timeout = setTimeout(() => resolve(false), 5000);
+            let onMessage: (data: any) => void;
 
-            const onMessage = (data: any) => {
+            const timeout = setTimeout(() => {
+                if (onMessage && conn.ws) conn.ws.off('message', onMessage);
+                this.closeConnection(id);
+                resolve(false);
+            }, 5000);
+
+            onMessage = (data: any) => {
                 try {
                     const msg = JSON.parse(data.toString());
                     if (msg.id === currentId) {
@@ -344,11 +389,18 @@ export class CDPHandler {
             };
 
             conn.ws.on('message', onMessage);
-            conn.ws.send(JSON.stringify({
-                id: currentId,
-                method: 'Input.insertText',
-                params: { text }
-            }));
+            try {
+                conn.ws.send(JSON.stringify({
+                    id: currentId,
+                    method: 'Input.insertText',
+                    params: { text }
+                }));
+            } catch (sendErr) {
+                clearTimeout(timeout);
+                conn.ws.off('message', onMessage);
+                this.closeConnection(id);
+                resolve(false);
+            }
         });
     }
 

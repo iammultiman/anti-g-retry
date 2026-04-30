@@ -2,7 +2,7 @@
     "name": "anti-g-retry",
     "displayName": "Anti-g Retry",
     "description": "Auto-retry for AI coding agents (Cursor, Antigravity, VS Code). Forked from agy-retry. Modifications and improvements by Matthew Anorkplim Loh.",
-    "version": "0.5.0",
+    "version": "0.5.1-beta",
     "publisher": "iammultiman",
     "author": "Matthew Anorkplim Loh",
     "icon": "resources/icons/icon.png",
